@@ -5,14 +5,9 @@ using PhishTrainer.Api.Models;
 namespace PhishTrainer.Api.Services;
 
 /// <summary>
-/// Orchestrates campaign launches:
-/// - Loads targets and template for the current tenant.
-/// - Sends emails via IMailService with throttling.
-/// - Updates campaign status.
-/// 
-/// Hooks are in place to adjust per-user risk in TrackingController
-/// when events are recorded (Click, Submitted, Reported), which aligns
-/// with common phishing simulation KPIs like click, submit, and report rates.[web:121][web:128][web:129][web:134]
+/// Orchestrates campaign execution:
+/// validates state, loads targets, sends emails, and updates status.
+/// Also supports launching all due scheduled campaigns.[web:8][web:214][web:225]
 /// </summary>
 public class CampaignService : ICampaignService
 {
@@ -33,12 +28,7 @@ public class CampaignService : ICampaignService
         _logger = logger;
     }
 
-    /// <summary>
-    /// Launches a campaign immediately:
-    /// - Validates state (must be Draft or Scheduled).
-    /// - Sends to all active targets in the campaign's TargetGroup.
-    /// - Sets status to Running and later to Completed.
-    /// </summary>
+    /// <inheritdoc />
     public async Task LaunchCampaignAsync(int campaignId, CancellationToken ct = default)
     {
         var tenantId = _tenantResolver.GetTenantId();
@@ -128,19 +118,51 @@ public class CampaignService : ICampaignService
             targets.Count);
     }
 
+    /// <summary>
+    /// Find all campaigns that are scheduled, due, and not yet launched,
+    /// and launch each one (sequentially) for the current tenant.[web:366][web:374]
+    /// </summary>
+    public async Task LaunchDueCampaignsAsync(CancellationToken ct = default)
+    {
+        var tenantId = _tenantResolver.GetTenantId();
+        var now = DateTime.UtcNow;
+
+        var dueCampaigns = await _db.Campaigns
+            .Where(c =>
+                c.TenantId == tenantId &&
+                c.Status == "Scheduled" &&
+                c.ScheduledAtUtc <= now)
+            .OrderBy(c => c.ScheduledAtUtc)
+            .ToListAsync(ct);
+
+        foreach (var campaign in dueCampaigns)
+        {
+            if (ct.IsCancellationRequested)
+                break;
+
+            try
+            {
+                await LaunchCampaignAsync(campaign.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error launching scheduled campaign {CampaignId}", campaign.Id);
+            }
+        }
+    }
+
     private static int CalculateDelayBetweenEmails(int throttlePerMinute)
     {
         if (throttlePerMinute <= 0)
             return 0;
 
-        // Example: 60 emails/min -> 1000 ms; 120 emails/min -> 500 ms
+        // Example: 60 emails/min -> 1000 ms, 120 emails/min -> 500 ms.[web:219]
         return (int)(60_000.0 / throttlePerMinute);
     }
 
     /// <summary>
     /// Builds a tracking token containing tenant, campaign, and user identifiers.
-    /// For now this is a simple Base64 payload; for production hardening you
-    /// can replace with a signed JWT using your existing auth keys.[web:99][web:101]
+    /// Currently base64-encoded "tenant:campaign:user"; could be upgraded to JWT later.[web:273]
     /// </summary>
     private static string BuildTrackingToken(int tenantId, int campaignId, int targetId)
     {
