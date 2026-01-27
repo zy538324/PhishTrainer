@@ -42,7 +42,8 @@ public class TrackingController : ControllerBase
         {
             var (tenantId, campaignId, targetId) = ParseToken(token);
 
-            _tenantResolver.SetTenant(tenantId, _tenantResolver.GetTenantSlug());
+            var currentSlug = _tenantResolver.GetTenantSlug()!;
+            _tenantResolver.SetTenant(tenantId, currentSlug);
 
             var metadata = CaptureMetadata(HttpContext);
 
@@ -77,7 +78,8 @@ public class TrackingController : ControllerBase
         {
             var (tenantId, campaignId, targetId) = ParseToken(token);
 
-            _tenantResolver.SetTenant(tenantId, _tenantResolver.GetTenantSlug());
+            var currentSlug2 = _tenantResolver.GetTenantSlug()!;
+            _tenantResolver.SetTenant(tenantId, currentSlug2);
 
             var metadata = CaptureMetadata(HttpContext);
 
@@ -130,7 +132,8 @@ public class TrackingController : ControllerBase
         {
             var (tenantId, campaignId, targetId) = ParseToken(dto.Token);
 
-            _tenantResolver.SetTenant(tenantId, _tenantResolver.GetTenantSlug());
+            var currentSlug3 = _tenantResolver.GetTenantSlug()!;
+            _tenantResolver.SetTenant(tenantId, currentSlug3);
 
             var targetUser = await _db.TargetUsers.FirstOrDefaultAsync(u => u.Id == targetId);
             if (targetUser == null) return NotFound("Target user not found.");
@@ -181,7 +184,8 @@ public class TrackingController : ControllerBase
         {
             var (tenantId, campaignId, targetId) = ParseToken(dto.Token);
 
-            _tenantResolver.SetTenant(tenantId, _tenantResolver.GetTenantSlug());
+            var currentSlug4 = _tenantResolver.GetTenantSlug()!;
+            _tenantResolver.SetTenant(tenantId, currentSlug4);
 
             var targetUser = await _db.TargetUsers.FirstOrDefaultAsync(u => u.Id == targetId);
             if (targetUser == null) return NotFound("Target user not found.");

@@ -57,8 +57,9 @@ public class TenantMiddleware
         }
 
         // 3) Set tenant for the rest of the pipeline
-        tenantResolver.SetTenant(tenant.Id, tenant.Slug);
-        _logger.LogDebug("Tenant resolved: Id={TenantId}, Slug={Slug}", tenant.Id, tenant.Slug);
+        var resolvedTenant = tenant!;
+        tenantResolver.SetTenant(resolvedTenant.Id, resolvedTenant.Slug);
+        _logger.LogDebug("Tenant resolved: Id={TenantId}, Slug={Slug}", resolvedTenant.Id, resolvedTenant.Slug);
 
         await _next(context);
     }
