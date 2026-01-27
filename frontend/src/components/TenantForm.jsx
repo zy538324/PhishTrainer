@@ -93,6 +93,16 @@ export default function TenantForm({ initialTenant, onCreated, onUpdated }) {
         </label>
       </div>
 
+      <div className="form-group">
+        <label>Logo URL</label>
+        <input value={form.logoUrl} onChange={e => updateField('logoUrl', e.target.value)} placeholder="https://example.com/logo.png" />
+      </div>
+
+      <div className="form-group">
+        <label>Primary color (hex)</label>
+        <input value={form.primaryColorHex} onChange={e => updateField('primaryColorHex', e.target.value)} placeholder="#2563eb" />
+      </div>
+
       <div className="form-actions">
         <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : form.id ? 'Update tenant' : 'Create tenant'}</button>
         <button type="button" className="btn" onClick={handleReset} disabled={saving}>Reset</button>

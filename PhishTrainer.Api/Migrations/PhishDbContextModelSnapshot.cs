@@ -30,8 +30,14 @@ namespace PhishTrainer.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AbSplitPercent")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EmailTemplateBId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("EmailTemplateId")
                         .HasColumnType("integer");
@@ -46,6 +52,16 @@ namespace PhishTrainer.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RecurrenceEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RecurrenceInterval")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecurrenceType")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -69,6 +85,8 @@ namespace PhishTrainer.Api.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EmailTemplateBId");
 
                     b.HasIndex("EmailTemplateId");
 
@@ -115,6 +133,76 @@ namespace PhishTrainer.Api.Migrations
                     b.HasIndex("TargetUserId");
 
                     b.ToTable("CampaignEvents");
+                });
+
+            modelBuilder.Entity("PhishTrainer.Api.Models.EmailQueueItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HtmlBody")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("TargetUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenantSlug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ToAddress")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("TrackingToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EmailQueue");
                 });
 
             modelBuilder.Entity("PhishTrainer.Api.Models.EmailTemplate", b =>
@@ -404,20 +492,20 @@ namespace PhishTrainer.Api.Migrations
                     b.Property<int>("TenantId")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("TenantId1")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId1");
 
                     b.ToTable("Users");
                 });
 
             modelBuilder.Entity("PhishTrainer.Api.Models.Campaign", b =>
                 {
+                    b.HasOne("PhishTrainer.Api.Models.EmailTemplate", "EmailTemplateB")
+                        .WithMany()
+                        .HasForeignKey("EmailTemplateBId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PhishTrainer.Api.Models.EmailTemplate", "EmailTemplate")
                         .WithMany()
                         .HasForeignKey("EmailTemplateId")
@@ -443,6 +531,8 @@ namespace PhishTrainer.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("EmailTemplate");
+
+                    b.Navigation("EmailTemplateB");
 
                     b.Navigation("LandingPage");
 
@@ -524,14 +614,10 @@ namespace PhishTrainer.Api.Migrations
             modelBuilder.Entity("PhishTrainer.Api.Models.User", b =>
                 {
                     b.HasOne("PhishTrainer.Api.Models.Tenant", "Tenant")
-                        .WithMany()
+                        .WithMany("Users")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("PhishTrainer.Api.Models.Tenant", null)
-                        .WithMany("Users")
-                        .HasForeignKey("TenantId1");
 
                     b.Navigation("Tenant");
                 });

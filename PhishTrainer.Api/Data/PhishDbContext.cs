@@ -33,6 +33,7 @@ public class PhishDbContext : DbContext
     public DbSet<TargetUser> TargetUsers => Set<TargetUser>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignEvent> CampaignEvents => Set<CampaignEvent>();
+    public DbSet<EmailQueueItem> EmailQueue => Set<EmailQueueItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -98,7 +99,7 @@ public class PhishDbContext : DbContext
         // Tenant
         modelBuilder.Entity<User>()
             .HasOne(u => u.Tenant)
-            .WithMany()
+            .WithMany(t => t.Users)
             .HasForeignKey(u => u.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
 
@@ -142,6 +143,12 @@ public class PhishDbContext : DbContext
             .HasOne(c => c.EmailTemplate)
             .WithMany()
             .HasForeignKey(c => c.EmailTemplateId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Campaign>()
+            .HasOne(c => c.EmailTemplateB)
+            .WithMany()
+            .HasForeignKey(c => c.EmailTemplateBId)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Campaign>()
@@ -203,7 +210,23 @@ public class PhishDbContext : DbContext
     /// </summary>
     private void EnforceTenantIds()
     {
-        var tenantId = _tenantResolver.GetTenantId();
+        // Only resolve tenant if we are actually saving tenant-owned entities
+        var hasTenantEntities = ChangeTracker.Entries()
+            .Any(e => e.Entity is IMustHaveTenant);
+
+        if (!hasTenantEntities)
+            return;
+
+        int tenantId;
+        try
+        {
+            tenantId = _tenantResolver.GetTenantId();
+        }
+        catch (InvalidOperationException)
+        {
+            // Tenant not resolved (startup seeding or background tasks)
+            return;
+        }
 
         foreach (var entry in ChangeTracker.Entries())
         {

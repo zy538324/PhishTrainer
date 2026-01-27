@@ -35,7 +35,10 @@ public class TenantMiddleware
         // This enables management of Tenants themselves (e.g. creating the "default" tenant)
         // before any tenant subdomain/header is available.
         var path = context.Request.Path;
-        if (path.StartsWithSegments("/api/tenants") || path.StartsWithSegments("/api/admin/tenants") || path.StartsWithSegments("/swagger"))
+        if (path.StartsWithSegments("/api/tenants") ||
+            path.StartsWithSegments("/api/admin") ||
+            path.StartsWithSegments("/api/webhooks") ||
+            path.StartsWithSegments("/swagger"))
         {
             await _next(context);
             return;

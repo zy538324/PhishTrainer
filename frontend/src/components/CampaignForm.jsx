@@ -6,16 +6,23 @@ import ErrorMessage from "./ErrorMessage";
 const INITIAL_FORM = {
   name: "",
   templateId: "",
+  templateBId: "",
+  abSplitPercent: 0,
   landingPageId: "",
   targetGroupId: "",
   scheduledAtUtc: "",
-  throttlePerMinute: 60
+  throttlePerMinute: 60,
+  recurrenceType: "None",
+  recurrenceInterval: 1,
+  recurrenceEndUtc: ""
 };
 
 export default function CampaignForm({ onCreated }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [templates, setTemplates] = useState([]);
+  const [landingPages, setLandingPages] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [tenantSlug, setTenantSlug] = useState("default");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,20 +33,32 @@ export default function CampaignForm({ onCreated }) {
      ========================= */
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = window.localStorage.getItem('tenantSlug');
+      if (stored) setTenantSlug(stored);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadData() {
       try {
         setLoading(true);
+        setError("");
 
-        const [templatesRes, groupsRes] = await Promise.all([
-          api.get("/api/templates"),
-          api.get("/api/targets/groups")
+        const tenantHeader = { headers: { 'X-Tenant': tenantSlug } };
+
+        const [templatesRes, groupsRes, landingRes] = await Promise.all([
+          api.get("/api/templates", tenantHeader),
+          api.get("/api/targets/groups", tenantHeader),
+          api.get("/api/landing-pages", tenantHeader)
         ]);
 
         if (!cancelled) {
           setTemplates(templatesRes);
           setGroups(groupsRes);
+          setLandingPages(landingRes || []);
         }
       } catch (err) {
         if (!cancelled) {
@@ -54,7 +73,8 @@ export default function CampaignForm({ onCreated }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tenantSlug]);
+
 
   /* =========================
      Helpers
@@ -91,15 +111,22 @@ export default function CampaignForm({ onCreated }) {
       const dto = {
         name: form.name.trim(),
         templateId: Number(form.templateId),
+        templateBId: form.templateBId ? Number(form.templateBId) : null,
+        abSplitPercent: Number(form.abSplitPercent) || 0,
         landingPageId: Number(form.landingPageId),
         targetGroupId: Number(form.targetGroupId),
         scheduledAtUtc: form.scheduledAtUtc
           ? new Date(form.scheduledAtUtc).toISOString()
           : null,
-        throttlePerMinute: Number(form.throttlePerMinute) || 0
+        throttlePerMinute: Number(form.throttlePerMinute) || 0,
+        recurrenceType: form.recurrenceType,
+        recurrenceInterval: Number(form.recurrenceInterval) || 1,
+        recurrenceEndUtc: form.recurrenceEndUtc
+          ? new Date(form.recurrenceEndUtc).toISOString()
+          : null
       };
 
-      await api.post("/api/campaigns", dto);
+      await api.post("/api/campaigns", dto, { headers: { 'X-Tenant': tenantSlug } });
 
       setForm(INITIAL_FORM);
       onCreated?.();
@@ -144,6 +171,19 @@ export default function CampaignForm({ onCreated }) {
       </div>
 
       <div className="form-group">
+        <label htmlFor="campaign-tenant">Tenant</label>
+        <input
+          id="campaign-tenant"
+          type="text"
+          value={tenantSlug}
+          readOnly
+        />
+        <small className="form-hint">
+          Campaign data will be created under the currently selected tenant.
+        </small>
+      </div>
+
+      <div className="form-group">
         <label htmlFor="template-id">
           Email template <span aria-hidden>*</span>
         </label>
@@ -163,19 +203,60 @@ export default function CampaignForm({ onCreated }) {
       </div>
 
       <div className="form-group">
-        <label htmlFor="landing-page-id">
-          Landing page ID <span aria-hidden>*</span>
+        <label htmlFor="template-b-id">
+          Template B (A/B test)
         </label>
+        <select
+          id="template-b-id"
+          value={form.templateBId}
+          onChange={e => updateField("templateBId", e.target.value)}
+        >
+          <option value="">None</option>
+          {templates.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <small className="form-hint">
+          Optional: choose a second template to split‑test.
+        </small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="ab-split">A/B split (% for Template B)</label>
         <input
-          id="landing-page-id"
+          id="ab-split"
           type="number"
-          value={form.landingPageId}
-          onChange={e => updateField("landingPageId", e.target.value)}
-          placeholder="e.g. 3"
-          required
+          min="0"
+          max="100"
+          value={form.abSplitPercent}
+          onChange={e => updateField("abSplitPercent", e.target.value)}
         />
         <small className="form-hint">
-          Temporary field. Will be replaced with a landing page selector.
+          0 uses Template A only. 50 splits evenly. 100 uses Template B only.
+        </small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="landing-page-id">
+          Landing page <span aria-hidden>*</span>
+        </label>
+        <select
+          id="landing-page-id"
+          value={form.landingPageId}
+          onChange={e => updateField("landingPageId", e.target.value)}
+          required
+        >
+          <option value="">Select landing page…</option>
+          {landingPages.map(lp => (
+            <option key={lp.id} value={lp.id}>
+              {lp.name}
+            </option>
+          ))}
+        </select>
+        <small className="form-hint">
+          Choose which landing experience users see after clicking.
         </small>
       </div>
 
@@ -210,6 +291,45 @@ export default function CampaignForm({ onCreated }) {
         />
         <small className="form-hint">
           Leave empty to send immediately.
+        </small>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="recurrence-type">Recurrence</label>
+          <select
+            id="recurrence-type"
+            value={form.recurrenceType}
+            onChange={e => updateField("recurrenceType", e.target.value)}
+          >
+            <option value="None">None</option>
+            <option value="Daily">Daily</option>
+            <option value="Weekly">Weekly</option>
+            <option value="Monthly">Monthly</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label htmlFor="recurrence-interval">Interval</label>
+          <input
+            id="recurrence-interval"
+            type="number"
+            min="1"
+            value={form.recurrenceInterval}
+            onChange={e => updateField("recurrenceInterval", e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="recurrence-end">Recurrence end (UTC)</label>
+        <input
+          id="recurrence-end"
+          type="datetime-local"
+          value={form.recurrenceEndUtc}
+          onChange={e => updateField("recurrenceEndUtc", e.target.value)}
+        />
+        <small className="form-hint">
+          Optional end date for recurring campaigns.
         </small>
       </div>
 

@@ -2,18 +2,23 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PhishTrainer.Api.Data;
 using PhishTrainer.Api.Models;
+using PhishTrainer.Api.Security;
+using PhishTrainer.Api.Services; // Add this if ITenantResolver is in the Services namespace
 
 namespace PhishTrainer.Api.Controllers;
 
 [ApiController]
 [Route("api/tenants")]
+[RequireRole(Roles.MspAdmin)]
 public class TenantsController : ControllerBase
 {
     private readonly PhishDbContext _db;
+    private readonly ITenantResolver _tenantResolver;
 
-    public TenantsController(PhishDbContext db)
+    public TenantsController(PhishDbContext db, ITenantResolver tenantResolver)
     {
         _db = db;
+        _tenantResolver = tenantResolver;
     }
 
     [HttpGet]
@@ -88,10 +93,48 @@ public class TenantsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, [FromQuery] bool force = false)
     {
         var t = await _db.Tenants.FindAsync(id);
         if (t == null) return NotFound(new { error = "Tenant not found" });
+
+        // Ensure tenant context for deleting tenant-owned rows
+        _tenantResolver.SetTenant(t.Id, t.Slug);
+
+        var counts = new
+        {
+            Users = await _db.Users.IgnoreQueryFilters().CountAsync(u => u.TenantId == t.Id),
+            Templates = await _db.EmailTemplates.IgnoreQueryFilters().CountAsync(e => e.TenantId == t.Id),
+            LandingPages = await _db.LandingPages.IgnoreQueryFilters().CountAsync(l => l.TenantId == t.Id),
+            TargetGroups = await _db.TargetGroups.IgnoreQueryFilters().CountAsync(g => g.TenantId == t.Id),
+            Targets = await _db.TargetUsers.IgnoreQueryFilters().CountAsync(u => u.TenantId == t.Id),
+            Campaigns = await _db.Campaigns.IgnoreQueryFilters().CountAsync(c => c.TenantId == t.Id),
+            Events = await _db.CampaignEvents.IgnoreQueryFilters().CountAsync(e => e.TenantId == t.Id),
+            EmailQueue = await _db.EmailQueue.IgnoreQueryFilters().CountAsync(q => q.TenantId == t.Id)
+        };
+
+        var hasData = counts.Users + counts.Templates + counts.LandingPages + counts.TargetGroups +
+                      counts.Targets + counts.Campaigns + counts.Events + counts.EmailQueue > 0;
+
+        if (!force && hasData)
+        {
+            t.IsActive = false;
+            await _db.SaveChangesAsync();
+            return Ok(new { status = "deactivated", counts });
+        }
+
+        if (hasData)
+        {
+            _db.CampaignEvents.RemoveRange(_db.CampaignEvents.IgnoreQueryFilters().Where(e => e.TenantId == t.Id));
+            _db.EmailQueue.RemoveRange(_db.EmailQueue.IgnoreQueryFilters().Where(q => q.TenantId == t.Id));
+            _db.Campaigns.RemoveRange(_db.Campaigns.IgnoreQueryFilters().Where(c => c.TenantId == t.Id));
+            _db.TargetUsers.RemoveRange(_db.TargetUsers.IgnoreQueryFilters().Where(u => u.TenantId == t.Id));
+            _db.TargetGroups.RemoveRange(_db.TargetGroups.IgnoreQueryFilters().Where(g => g.TenantId == t.Id));
+            _db.LandingPages.RemoveRange(_db.LandingPages.IgnoreQueryFilters().Where(l => l.TenantId == t.Id));
+            _db.EmailTemplates.RemoveRange(_db.EmailTemplates.IgnoreQueryFilters().Where(e => e.TenantId == t.Id));
+            _db.Users.RemoveRange(_db.Users.IgnoreQueryFilters().Where(u => u.TenantId == t.Id));
+            await _db.SaveChangesAsync();
+        }
 
         _db.Tenants.Remove(t);
         await _db.SaveChangesAsync();

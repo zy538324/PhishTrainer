@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Client;
 using PhishTrainer.Api.Data;
 using PhishTrainer.Api.Models;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
 namespace PhishTrainer.Api.Services;
 
 /// <summary>
-/// Sends phishing simulation emails via Microsoft 365 using SMTP + OAuth2 (client credentials).
+/// Sends phishing simulation emails via Microsoft Graph (when enabled) or SMTP.
 /// Records Sent / Bounced events into CampaignEvents.
 /// </summary>
 public class MailService : IMailService
@@ -17,19 +19,22 @@ public class MailService : IMailService
     private readonly PhishDbContext _db;
     private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<MailService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     // Simple in-memory token cache per service instance
-    private AuthenticationResult? _cachedToken;
-    private DateTimeOffset _tokenExpiresAtUtc;
+    private AuthenticationResult? _cachedGraphToken;
+    private DateTimeOffset _graphTokenExpiresAtUtc;
 
     public MailService(
         PhishDbContext db,
         ITenantResolver tenantResolver,
-        ILogger<MailService> logger)
+        ILogger<MailService> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _db = db;
         _tenantResolver = tenantResolver;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task SendPhishingMailAsync(
@@ -46,13 +51,20 @@ public class MailService : IMailService
 
         ValidateTenantMailConfig(tenant);
 
-        MimeMessage message = BuildMimeMessage(tenant, toAddress, subject, htmlBody, trackingToken);
+        var bodyWithTracking = BuildHtmlBodyWithTracking(htmlBody, trackingToken);
 
         try
         {
-            await SendViaSmtpAsync(tenant, message, ct);
+            if (tenant.UseAzureAdSmtp)
+            {
+                await SendViaGraphAsync(tenant, toAddress, subject, bodyWithTracking, ct);
+            }
+            else
+            {
+                var message = BuildMimeMessage(tenant, toAddress, subject, bodyWithTracking);
+                await SendViaSmtpAsync(tenant, message, ct);
+            }
 
-            // Record Sent event
             _db.CampaignEvents.Add(new CampaignEvent
             {
                 TenantId = tenantId,
@@ -67,7 +79,6 @@ public class MailService : IMailService
         }
         catch (SmtpCommandException ex) when (IsBounceStatus(ex.StatusCode))
         {
-            // Record Bounced event
             _db.CampaignEvents.Add(new CampaignEvent
             {
                 TenantId = tenantId,
@@ -94,46 +105,82 @@ public class MailService : IMailService
 
     private static void ValidateTenantMailConfig(Tenant tenant)
     {
-        if (string.IsNullOrWhiteSpace(tenant.AzureAdTenantId) ||
-            string.IsNullOrWhiteSpace(tenant.AzureAdClientId) ||
-            string.IsNullOrWhiteSpace(tenant.AzureAdClientSecret) ||
-            string.IsNullOrWhiteSpace(tenant.SmtpFromAddress))
+        if (string.IsNullOrWhiteSpace(tenant.SmtpFromAddress))
         {
             throw new InvalidOperationException(
                 "Tenant mail configuration is incomplete. " +
-                "AzureAdTenantId, AzureAdClientId, AzureAdClientSecret, and SmtpFromAddress are required.");
+                "SmtpFromAddress is required.");
+        }
+
+        if (tenant.UseAzureAdSmtp &&
+            (string.IsNullOrWhiteSpace(tenant.AzureAdTenantId) ||
+             string.IsNullOrWhiteSpace(tenant.AzureAdClientId) ||
+             string.IsNullOrWhiteSpace(tenant.AzureAdClientSecret)))
+        {
+            throw new InvalidOperationException(
+                "Azure AD (Graph) configuration is incomplete. " +
+                "AzureAdTenantId, AzureAdClientId, and AzureAdClientSecret are required.");
+        }
+
+        if (!tenant.UseAzureAdSmtp && (string.IsNullOrWhiteSpace(tenant.SmtpHost) || !tenant.SmtpPort.HasValue))
+        {
+            throw new InvalidOperationException(
+                "SMTP configuration is incomplete. SmtpHost and SmtpPort are required when Azure AD is disabled.");
         }
     }
 
     private async Task SendViaSmtpAsync(Tenant tenant, MimeMessage message, CancellationToken ct)
     {
-        // Get or refresh OAuth2 token using client credentials flow
-        var accessToken = await GetAccessTokenAsync(tenant, ct);
+        var host = tenant.SmtpHost ?? "smtp.office365.com";
+        var port = tenant.SmtpPort ?? 587;
+        var socketOptions = port == 587 ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
 
         using var client = new SmtpClient
         {
             CheckCertificateRevocation = true
         };
 
-        // Microsoft 365 SMTP endpoint with STARTTLS + XOAUTH2[web:17][web:120]
-        await client.ConnectAsync("smtp.office365.com", 587, SecureSocketOptions.StartTls, ct);
-
-        var oauth2 = new MailKit.Security.SaslMechanismOAuth2(
-            tenant.SmtpFromAddress!,
-            accessToken);
-
-        await client.AuthenticateAsync(oauth2, ct);
-
+        await client.ConnectAsync(host, port, socketOptions, ct);
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(true, ct);
     }
 
-    private async Task<string> GetAccessTokenAsync(Tenant tenant, CancellationToken ct)
+    private async Task SendViaGraphAsync(Tenant tenant, string to, string subject, string htmlBody, CancellationToken ct)
     {
-        // Reuse token until ~1 minute before expiration to reduce Azure AD calls[web:115][web:120]
-        if (_cachedToken != null && _tokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
+        var accessToken = await GetGraphAccessTokenAsync(tenant, ct);
+        var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var payload = new
         {
-            return _cachedToken.AccessToken;
+            message = new
+            {
+                subject,
+                body = new { contentType = "HTML", content = htmlBody },
+                toRecipients = new[]
+                {
+                    new { emailAddress = new { address = to } }
+                }
+            },
+            saveToSentItems = "false"
+        };
+
+        var from = Uri.EscapeDataString(tenant.SmtpFromAddress!);
+        var url = $"https://graph.microsoft.com/v1.0/users/{from}/sendMail";
+
+        using var response = await client.PostAsJsonAsync(url, payload, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"Graph sendMail failed: {(int)response.StatusCode} {response.ReasonPhrase} {body}");
+        }
+    }
+
+    private async Task<string> GetGraphAccessTokenAsync(Tenant tenant, CancellationToken ct)
+    {
+        if (_cachedGraphToken != null && _graphTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
+        {
+            return _cachedGraphToken.AccessToken;
         }
 
         var app = ConfidentialClientApplicationBuilder
@@ -142,32 +189,40 @@ public class MailService : IMailService
             .WithAuthority($"https://login.microsoftonline.com/{tenant.AzureAdTenantId}")
             .Build();
 
-        // For SMTP, use "https://outlook.office365.com/.default" as scope[web:17][web:115][web:117]
         var result = await app
-            .AcquireTokenForClient(new[] { "https://outlook.office365.com/.default" })
+            .AcquireTokenForClient(new[] { "https://graph.microsoft.com/.default" })
             .ExecuteAsync(ct);
 
-        _cachedToken = result;
-        _tokenExpiresAtUtc = result.ExpiresOn;
+        _cachedGraphToken = result;
+        _graphTokenExpiresAtUtc = result.ExpiresOn;
 
         return result.AccessToken;
     }
 
     private static bool IsBounceStatus(SmtpStatusCode statusCode)
     {
-        // Basic classification of SMTP codes that represent delivery issues[web:115][web:118]
         return statusCode == SmtpStatusCode.MailboxUnavailable
             || statusCode == SmtpStatusCode.MailboxNameNotAllowed
             || statusCode == SmtpStatusCode.UserNotLocalTryAlternatePath
             || statusCode == SmtpStatusCode.ExceededStorageAllocation;
     }
 
+    private static string BuildHtmlBodyWithTracking(string htmlBody, string token)
+    {
+        var bodyWithTracking = htmlBody
+            .Replace("{{TrackingPixel}}",
+                $"<img src=\"https://phishtrainer.local/api/tracking/o/{token}.png\" " +
+                "width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />")
+            .Replace("{{ClickLink}}",
+                $"https://phishtrainer.local/api/tracking/t/{token}");
+        return bodyWithTracking;
+    }
+
     private MimeMessage BuildMimeMessage(
         Tenant tenant,
         string to,
         string subject,
-        string htmlBody,
-        string token)
+        string htmlBody)
     {
         var message = new MimeMessage();
 
@@ -178,19 +233,9 @@ public class MailService : IMailService
         message.To.Add(MailboxAddress.Parse(to));
         message.Subject = subject;
 
-        // Inject tracking elements:
-        // - {{TrackingPixel}} -> open tracker
-        // - {{ClickLink}} -> click tracker[web:119][web:121][web:122]
-        var bodyWithTracking = htmlBody
-            .Replace("{{TrackingPixel}}",
-                $"<img src=\"https://phishtrainer.local/api/tracking/o/{token}.png\" " +
-                "width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />")
-            .Replace("{{ClickLink}}",
-                $"https://phishtrainer.local/api/tracking/t/{token}");
-
         message.Body = new TextPart(MimeKit.Text.TextFormat.Html)
         {
-            Text = bodyWithTracking
+            Text = htmlBody
         };
 
         return message;

@@ -27,8 +27,13 @@ export default function TenantList({ onSelectTenant, onChanged }) {
 
   async function confirmDelete(id) {
     try {
-      await api.del(`/api/tenants/${id}`);
-      setTenants(prev => prev.filter(t => t.id !== id));
+      const res = await api.del(`/api/tenants/${id}`);
+      if (res?.status === "deactivated") {
+        setActionError("Tenant has data and was deactivated instead of deleted.");
+        await load();
+      } else {
+        setTenants(prev => prev.filter(t => t.id !== id));
+      }
       onChanged?.();
     } catch (err) {
       setError(err?.message || "Failed to delete tenant.");

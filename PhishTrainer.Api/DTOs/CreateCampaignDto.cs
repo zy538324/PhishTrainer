@@ -16,6 +16,9 @@ public class CreateCampaignDto
     [Required]
     public int TemplateId { get; set; }
 
+    /// <summary>Optional template B for A/B testing.</summary>
+    public int? TemplateBId { get; set; }
+
     /// <summary>Landing page template to use for clicks.</summary>
     [Required]
     public int LandingPageId { get; set; }
@@ -36,4 +39,26 @@ public class CreateCampaignDto
     /// </summary>
     [Range(0, 10_000)]
     public int ThrottlePerMinute { get; set; } = 60;
+
+    /// <summary>
+    /// A/B split percentage for template B (0-100). 0 = no split.
+    /// </summary>
+    [Range(0, 100)]
+    public int AbSplitPercent { get; set; } = 0;
+
+    /// <summary>
+    /// Recurrence type: None, Daily, Weekly, Monthly.
+    /// </summary>
+    public string RecurrenceType { get; set; } = "None";
+
+    /// <summary>
+    /// Recurrence interval (e.g., every 2 days/weeks/months).
+    /// </summary>
+    [Range(1, 365)]
+    public int RecurrenceInterval { get; set; } = 1;
+
+    /// <summary>
+    /// Optional end date for recurrence (UTC).
+    /// </summary>
+    public DateTime? RecurrenceEndUtc { get; set; }
 }

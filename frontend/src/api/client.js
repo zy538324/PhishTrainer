@@ -29,17 +29,45 @@ function resolveApiBaseUrl() {
   return `http://localhost:${DEFAULT_API_PORT}`;
 }
 
-const API_BASE_URL = resolveApiBaseUrl();
+export const API_BASE_URL = resolveApiBaseUrl();
 
-// Later we can make this dynamic (e.g. from logged-in user / subdomain)
-const TENANT_SLUG = 'default';
+const TENANT_STORAGE_KEY = 'tenantSlug';
+
+function resolveTenantSlug() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const stored = window.localStorage.getItem(TENANT_STORAGE_KEY);
+    if (stored && stored.trim()) return stored.trim().toLowerCase();
+  }
+
+  return 'default';
+}
+
+function resolveUserRole() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const stored = window.localStorage.getItem('userRole');
+    if (stored && stored.trim()) return stored.trim();
+  }
+
+  return 'TenantAdmin';
+}
+
+function resolveUserEmail() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const stored = window.localStorage.getItem('userEmail');
+    if (stored && stored.trim()) return stored.trim();
+  }
+
+  return '';
+}
 
 async function request(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
 
   const headers = {
     'Content-Type': 'application/json',
-    'X-Tenant': TENANT_SLUG,
+    'X-Tenant': resolveTenantSlug(),
+    'X-Role': resolveUserRole(),
+    ...(resolveUserEmail() ? { 'X-User-Email': resolveUserEmail() } : {}),
     ...(options.headers || {}),
   };
 
@@ -51,9 +79,14 @@ async function request(path, options = {}) {
       const data = await res.json();
       if (data && data.error) message = data.error;
     } catch {
-      // ignore JSON parse errors
+      try {
+        const text = await res.text();
+        if (text) message = `${message}: ${text}`;
+      } catch {
+        // ignore
+      }
     }
-    throw new Error(message);
+    throw new Error(`${message} (URL: ${url})`);
   }
 
   if (res.status === 204) return null;
@@ -62,8 +95,8 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get: (path) => request(path),
-  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
-  put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
-  del: (path) => request(path, { method: 'DELETE' }),
+  get: (path, options = {}) => request(path, options),
+  post: (path, body, options = {}) => request(path, { ...options, method: 'POST', body: JSON.stringify(body) }),
+  put: (path, body, options = {}) => request(path, { ...options, method: 'PUT', body: JSON.stringify(body) }),
+  del: (path, options = {}) => request(path, { ...options, method: 'DELETE' }),
 };

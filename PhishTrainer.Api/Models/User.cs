@@ -20,7 +20,7 @@ public class User : IMustHaveTenant
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Role within the tenant, e.g. TenantAdmin, Analyst, Viewer.[web:339][web:341][web:343][web:345]
+    /// Role within the tenant, e.g. MspAdmin, TenantAdmin, Auditor, Analyst, Viewer.
     /// </summary>
     [MaxLength(64)]
     public string Role { get; set; } = "TenantAdmin";

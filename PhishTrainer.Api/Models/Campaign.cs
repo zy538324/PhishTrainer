@@ -16,6 +16,7 @@ public class Campaign : IMustHaveTenant
 
     // Foreign keys
     public int EmailTemplateId { get; set; }
+    public int? EmailTemplateBId { get; set; }
     public int LandingPageId { get; set; }
     public int TargetGroupId { get; set; }
 
@@ -40,6 +41,26 @@ public class Campaign : IMustHaveTenant
     public int ThrottlePerMinute { get; set; } = 60;
 
     /// <summary>
+    /// Recurrence type: None, Daily, Weekly, Monthly.
+    /// </summary>
+    public string RecurrenceType { get; set; } = "None";
+
+    /// <summary>
+    /// Recurrence interval (e.g., every 2 days/weeks/months).
+    /// </summary>
+    public int RecurrenceInterval { get; set; } = 1;
+
+    /// <summary>
+    /// Optional end date for recurrence (UTC).
+    /// </summary>
+    public DateTime? RecurrenceEndUtc { get; set; }
+
+    /// <summary>
+    /// A/B split percentage for template B (0-100). 0 means no split (A only).
+    /// </summary>
+    public int AbSplitPercent { get; set; } = 0;
+
+    /// <summary>
     /// Optional override for the display name in the From header,
     /// otherwise Tenant.SmtpDisplayName / Tenant.Name is used.[web:260]
     /// </summary>
@@ -53,6 +74,7 @@ public class Campaign : IMustHaveTenant
     // Navigation properties
     public Tenant Tenant { get; set; } = null!;
     public EmailTemplate EmailTemplate { get; set; } = null!;
+    public EmailTemplate? EmailTemplateB { get; set; }
     public LandingPageTemplate LandingPage { get; set; } = null!;
     public TargetGroup TargetGroup { get; set; } = null!;
 

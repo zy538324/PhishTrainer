@@ -1,10 +1,10 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PhishTrainer.Api.Data;
 using PhishTrainer.Api.DTOs;
 using PhishTrainer.Api.Models;
 using PhishTrainer.Api.Services;
+using PhishTrainer.Api.Security;
 
 namespace PhishTrainer.Api.Controllers;
 
@@ -16,7 +16,7 @@ namespace PhishTrainer.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[RequireRole(Roles.MspAdmin, Roles.TenantAdmin, Roles.Analyst)]
 public class TemplatesController : ControllerBase
 {
     private readonly PhishDbContext _db;

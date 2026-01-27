@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PhishTrainer.Api.Data;
@@ -16,7 +15,6 @@ namespace PhishTrainer.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
 public class ReportsController : ControllerBase
 {
     private readonly PhishDbContext _db;
@@ -81,6 +79,27 @@ public class ReportsController : ControllerBase
     }
 
     /// <summary>
+    /// CSV export of campaign summaries (for tenant).
+    /// </summary>
+    [HttpGet("campaigns/export")]
+    public async Task<IActionResult> ExportCampaignSummariesCsv()
+    {
+        var summaries = await GetCampaignSummaries();
+        if (summaries.Result is ObjectResult obj && obj.Value is IEnumerable<CampaignSummaryDto> list)
+        {
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("CampaignId,Name,TotalSent,TotalOpen,TotalClick,TotalSubmitted,TotalReported,OpenRate,ClickRate,SubmittedRate,ReportedRate");
+            foreach (var s in list)
+            {
+                csv.AppendLine($"{s.CampaignId},\"{s.Name}\",{s.TotalSent},{s.TotalOpen},{s.TotalClick},{s.TotalSubmitted},{s.TotalReported},{s.OpenRate:F2},{s.ClickRate:F2},{s.SubmittedRate:F2},{s.ReportedRate:F2}");
+            }
+            return File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", "campaign_summaries.csv");
+        }
+
+        return BadRequest(new { error = "Unable to export" });
+    }
+
+    /// <summary>
     /// Returns per-user behaviour for a campaign
     /// (sent/open/click/submitted/reported flags + risk score).[web:165][web:171][web:169]
     /// </summary>
@@ -125,6 +144,27 @@ public class ReportsController : ControllerBase
     }
 
     /// <summary>
+    /// CSV export for per-user campaign report.
+    /// </summary>
+    [HttpGet("campaigns/{campaignId:int}/users/export")]
+    public async Task<IActionResult> ExportCampaignUserReportCsv(int campaignId)
+    {
+        var result = await GetCampaignUserReport(campaignId);
+        if (result.Result is ObjectResult obj && obj.Value is IEnumerable<CampaignUserReportDto> list)
+        {
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("TargetUserId,Email,DisplayName,Department,RiskScore,IncidentCount,Sent,Opened,Clicked,Submitted,Reported");
+            foreach (var u in list)
+            {
+                csv.AppendLine($"{u.TargetUserId},\"{u.Email}\",\"{u.DisplayName}\",\"{u.Department}\",{u.RiskScore:F2},{u.IncidentCount},{u.Sent},{u.Opened},{u.Clicked},{u.Submitted},{u.Reported}");
+            }
+            return File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"campaign_{campaignId}_users.csv");
+        }
+
+        return BadRequest(new { error = "Unable to export" });
+    }
+
+    /// <summary>
     /// Returns the highest-risk users across the tenant,
     /// sorted by RiskScore desc.[web:171][web:169][web:170]
     /// </summary>
@@ -155,6 +195,99 @@ public class ReportsController : ControllerBase
         }).ToList();
 
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// CSV export of high-risk users (for tenant).
+    /// </summary>
+    [HttpGet("risk/high-risk-users/export")]
+    public async Task<IActionResult> ExportHighRiskUsersCsv([FromQuery] int top = 50)
+    {
+        var result = await GetHighRiskUsers(top);
+        if (result.Result is ObjectResult obj && obj.Value is IEnumerable<HighRiskUserDto> list)
+        {
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("TargetUserId,Email,DisplayName,Department,RiskScore,IncidentCount,LastIncidentAt");
+            foreach (var u in list)
+            {
+                var last = u.LastIncidentAt?.ToString("O") ?? "";
+                csv.AppendLine($"{u.TargetUserId},\"{u.Email}\",\"{u.DisplayName}\",\"{u.Department}\",{u.RiskScore:F2},{u.IncidentCount},\"{last}\"");
+            }
+            return File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", "high_risk_users.csv");
+        }
+
+        return BadRequest(new { error = "Unable to export" });
+    }
+
+    /// <summary>
+    /// Tenant health score based on engagement risk (lower is better).
+    /// </summary>
+    [HttpGet("health")]
+    public async Task<IActionResult> GetTenantHealth()
+    {
+        var tenantId = _tenantResolver.GetTenantId();
+
+        var events = await _db.CampaignEvents
+            .Where(e => e.TenantId == tenantId)
+            .ToListAsync();
+
+        var sent = events.Count(e => e.EventType == CampaignEventType.Sent.ToCode());
+        var open = events.Count(e => e.EventType == CampaignEventType.Open.ToCode());
+        var click = events.Count(e => e.EventType == CampaignEventType.Click.ToCode());
+        var submitted = events.Count(e => e.EventType == CampaignEventType.Submitted.ToCode());
+        var reported = events.Count(e => e.EventType == CampaignEventType.Reported.ToCode());
+
+        double Rate(int count) => sent > 0 ? count * 100.0 / sent : 0;
+
+        // Simple weighted risk score (0-100). Lower is better.
+        var risk = Math.Clamp(
+            Rate(open) * 0.2 + Rate(click) * 0.4 + Rate(submitted) * 0.4 - Rate(reported) * 0.2,
+            0,
+            100);
+
+        var health = Math.Clamp(100 - risk, 0, 100);
+
+        return Ok(new
+        {
+            sent,
+            openRate = Rate(open),
+            clickRate = Rate(click),
+            submittedRate = Rate(submitted),
+            reportedRate = Rate(reported),
+            healthScore = Math.Round(health, 2)
+        });
+    }
+
+    /// <summary>
+    /// 30-day event trend for dashboard charts.
+    /// </summary>
+    [HttpGet("trends")]
+    public async Task<IActionResult> GetTrends([FromQuery] int days = 30)
+    {
+        var tenantId = _tenantResolver.GetTenantId();
+        days = Math.Clamp(days, 7, 120);
+        var start = DateTime.UtcNow.Date.AddDays(-days + 1);
+
+        var events = await _db.CampaignEvents
+            .Where(e => e.TenantId == tenantId && e.TimestampUtc >= start)
+            .ToListAsync();
+
+        var trend = Enumerable.Range(0, days).Select(i =>
+        {
+            var day = start.AddDays(i);
+            var dayEvents = events.Where(e => e.TimestampUtc.Date == day.Date).ToList();
+            return new
+            {
+                date = day.ToString("yyyy-MM-dd"),
+                sent = dayEvents.Count(e => e.EventType == CampaignEventType.Sent.ToCode()),
+                open = dayEvents.Count(e => e.EventType == CampaignEventType.Open.ToCode()),
+                click = dayEvents.Count(e => e.EventType == CampaignEventType.Click.ToCode()),
+                submitted = dayEvents.Count(e => e.EventType == CampaignEventType.Submitted.ToCode()),
+                reported = dayEvents.Count(e => e.EventType == CampaignEventType.Reported.ToCode())
+            };
+        });
+
+        return Ok(trend);
     }
 }
 

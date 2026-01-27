@@ -40,12 +40,11 @@ export default function TargetForm({ group, onCreated }) {
 
     try {
       const dto = {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        groupId: group.id
+        displayName: form.name.trim(),
+        email: form.email.trim()
       };
 
-      await api.post("/api/targets", dto);
+      await api.post(`/api/targets/groups/${group.id}/targets`, dto);
 
       setForm(INITIAL_FORM);
       onCreated?.();

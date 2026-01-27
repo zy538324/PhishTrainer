@@ -1,8 +1,154 @@
 // src/pages/Settings.jsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client';
+import ErrorMessage from '../components/ErrorMessage';
+import Loader from '../components/Loader';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [tenantSlug, setTenantSlug] = useState('default');
+
+  const [smtpForm, setSmtpForm] = useState({
+    smtpHost: '',
+    smtpPort: '',
+    smtpFromAddress: '',
+    smtpDisplayName: '',
+    useAzureAdSmtp: true
+  });
+
+  const [azureForm, setAzureForm] = useState({
+    azureAdTenantId: '',
+    azureAdClientId: '',
+    azureAdClientSecret: '',
+    azureAdDomain: '',
+    hasAzureAdClientSecret: false,
+    clearAzureAdClientSecret: false
+  });
+
+  const [brandingForm, setBrandingForm] = useState({
+    logoUrl: '',
+    primaryColorHex: ''
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = window.localStorage.getItem('tenantSlug');
+      if (stored) setTenantSlug(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [tenantSlug]);
+
+  async function loadSettings() {
+    try {
+      setLoading(true);
+      setError('');
+      const [smtpData, azureData, brandingData] = await Promise.all([
+        api.get('/api/settings/smtp', { headers: { 'X-Tenant': tenantSlug } }),
+        api.get('/api/settings/azure', { headers: { 'X-Tenant': tenantSlug } }),
+        api.get('/api/settings/branding', { headers: { 'X-Tenant': tenantSlug } })
+      ]);
+
+      setSmtpForm({
+        smtpHost: smtpData.smtpHost || '',
+        smtpPort: smtpData.smtpPort || '',
+        smtpFromAddress: smtpData.smtpFromAddress || '',
+        smtpDisplayName: smtpData.smtpDisplayName || '',
+        useAzureAdSmtp: smtpData.useAzureAdSmtp ?? true
+      });
+
+      setAzureForm({
+        azureAdTenantId: azureData.azureAdTenantId || '',
+        azureAdClientId: azureData.azureAdClientId || '',
+        azureAdClientSecret: '',
+        azureAdDomain: azureData.azureAdDomain || '',
+        hasAzureAdClientSecret: azureData.hasAzureAdClientSecret || false,
+        clearAzureAdClientSecret: false
+      });
+
+      setBrandingForm({
+        logoUrl: brandingData.logoUrl || '',
+        primaryColorHex: brandingData.primaryColorHex || ''
+      });
+    } catch (err) {
+      setError(err?.message || 'Failed to load tenant settings.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateSmtpField(name, value) {
+    setSmtpForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  function updateAzureField(name, value) {
+    setAzureForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  function updateBrandingField(name, value) {
+    setBrandingForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  async function saveSmtp() {
+    try {
+      setSaving(true);
+      setError('');
+      await api.put('/api/settings/smtp', {
+        smtpHost: smtpForm.smtpHost || null,
+        smtpPort: smtpForm.smtpPort ? Number(smtpForm.smtpPort) : null,
+        smtpFromAddress: smtpForm.smtpFromAddress || null,
+        smtpDisplayName: smtpForm.smtpDisplayName || null,
+        useAzureAdSmtp: smtpForm.useAzureAdSmtp
+      }, { headers: { 'X-Tenant': tenantSlug } });
+    } catch (err) {
+      setError(err?.message || 'Failed to save SMTP settings.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveAzure() {
+    try {
+      setSaving(true);
+      setError('');
+      await api.put('/api/settings/azure', {
+        azureAdTenantId: azureForm.azureAdTenantId || null,
+        azureAdClientId: azureForm.azureAdClientId || null,
+        azureAdClientSecret: azureForm.azureAdClientSecret || null,
+        azureAdDomain: azureForm.azureAdDomain || null,
+        clearAzureAdClientSecret: azureForm.clearAzureAdClientSecret || false
+      }, { headers: { 'X-Tenant': tenantSlug } });
+      setAzureForm(prev => ({
+        ...prev,
+        azureAdClientSecret: '',
+        clearAzureAdClientSecret: false
+      }));
+    } catch (err) {
+      setError(err?.message || 'Failed to save Azure settings.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveBranding() {
+    try {
+      setSaving(true);
+      setError('');
+      await api.put('/api/settings/branding', {
+        logoUrl: brandingForm.logoUrl || null,
+        primaryColorHex: brandingForm.primaryColorHex || null
+      }, { headers: { 'X-Tenant': tenantSlug } });
+    } catch (err) {
+      setError(err?.message || 'Failed to save branding settings.');
+    } finally {
+      setSaving(false);
+    }
+  }
   
   return (
     <div className="page page--settings">
@@ -304,6 +450,12 @@ export default function SettingsPage() {
       {/* Email & SMTP Settings */}
       {activeTab === 'email' && (
         <div className="settings-content">
+          <ErrorMessage message={error} />
+
+          {loading ? (
+            <Loader label="Loading tenant settings…" />
+          ) : (
+            <>
           <section className="settings-section">
             <h2>SMTP Server Configuration</h2>
             <div className="form-group">
@@ -311,6 +463,8 @@ export default function SettingsPage() {
               <input 
                 type="text" 
                 id="smtp-host" 
+                value={smtpForm.smtpHost}
+                onChange={e => updateSmtpField('smtpHost', e.target.value)}
                 placeholder="smtp.sendgrid.net"
               />
             </div>
@@ -319,34 +473,20 @@ export default function SettingsPage() {
               <input 
                 type="number" 
                 id="smtp-port" 
+                value={smtpForm.smtpPort}
+                onChange={e => updateSmtpField('smtpPort', e.target.value)}
                 placeholder="587"
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="smtp-encryption">Encryption</label>
-              <select id="smtp-encryption">
-                <option value="tls" selected>TLS</option>
-                <option value="ssl">SSL</option>
-                <option value="none">None</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label htmlFor="smtp-username">SMTP Username</label>
-              <input 
-                type="text" 
-                id="smtp-username" 
-                placeholder="apikey"
+            <div className="form-group checkbox-group">
+              <input
+                type="checkbox"
+                id="use-azure-smtp"
+                checked={smtpForm.useAzureAdSmtp}
+                onChange={e => updateSmtpField('useAzureAdSmtp', e.target.checked)}
               />
+              <label htmlFor="use-azure-smtp">Use Azure AD SMTP (OAuth2)</label>
             </div>
-            <div className="form-group">
-              <label htmlFor="smtp-password">SMTP Password</label>
-              <input 
-                type="password" 
-                id="smtp-password" 
-                placeholder="••••••••••"
-              />
-            </div>
-            <button className="btn btn--secondary">Test SMTP Connection</button>
           </section>
 
           <section className="settings-section">
@@ -356,6 +496,8 @@ export default function SettingsPage() {
               <input 
                 type="email" 
                 id="from-email" 
+                value={smtpForm.smtpFromAddress}
+                onChange={e => updateSmtpField('smtpFromAddress', e.target.value)}
                 placeholder="security@company.com"
               />
               <small>This will be used as the sender for phishing simulations</small>
@@ -365,21 +507,76 @@ export default function SettingsPage() {
               <input 
                 type="text" 
                 id="from-name" 
+                value={smtpForm.smtpDisplayName}
+                onChange={e => updateSmtpField('smtpDisplayName', e.target.value)}
                 placeholder="IT Security Team"
               />
             </div>
+
+            <div className="form-actions">
+              <button className="btn btn--primary" type="button" disabled={saving} onClick={saveSmtp}>
+                {saving ? 'Saving…' : 'Save SMTP settings'}
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h2>Azure AD (SMTP OAuth)</h2>
             <div className="form-group">
-              <label htmlFor="reply-to">Reply-To Address</label>
-              <input 
-                type="email" 
-                id="reply-to" 
-                placeholder="no-reply@company.com"
+              <label htmlFor="aad-tenant">Tenant ID</label>
+              <input
+                type="text"
+                id="aad-tenant"
+                value={azureForm.azureAdTenantId}
+                onChange={e => updateAzureField('azureAdTenantId', e.target.value)}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               />
             </div>
-            <div className="form-group checkbox-group">
-              <input type="checkbox" id="randomize-sender" />
-              <label htmlFor="randomize-sender">Randomize Sender Names</label>
-              <small>Use different sender names for increased realism</small>
+            <div className="form-group">
+              <label htmlFor="aad-client">Client ID</label>
+              <input
+                type="text"
+                id="aad-client"
+                value={azureForm.azureAdClientId}
+                onChange={e => updateAzureField('azureAdClientId', e.target.value)}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="aad-secret">Client Secret</label>
+              <input
+                type="password"
+                id="aad-secret"
+                value={azureForm.azureAdClientSecret}
+                onChange={e => updateAzureField('azureAdClientSecret', e.target.value)}
+                placeholder={azureForm.hasAzureAdClientSecret ? '•••••••• (saved)' : 'Enter new secret'}
+              />
+              {azureForm.hasAzureAdClientSecret && (
+                <label className="checkbox-inline">
+                  <input
+                    type="checkbox"
+                    checked={azureForm.clearAzureAdClientSecret}
+                    onChange={(e) => updateAzureField('clearAzureAdClientSecret', e.target.checked)}
+                  />
+                  Clear saved secret
+                </label>
+              )}
+            </div>
+            <div className="form-group">
+              <label htmlFor="aad-domain">Domain</label>
+              <input
+                type="text"
+                id="aad-domain"
+                value={azureForm.azureAdDomain}
+                onChange={e => updateAzureField('azureAdDomain', e.target.value)}
+                placeholder="contoso.onmicrosoft.com"
+              />
+            </div>
+
+            <div className="form-actions">
+              <button className="btn btn--primary" type="button" disabled={saving} onClick={saveAzure}>
+                {saving ? 'Saving…' : 'Save Azure settings'}
+              </button>
             </div>
           </section>
 
@@ -446,7 +643,11 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <button className="btn btn--primary">Save Email Settings</button>
+          <button className="btn btn--primary" onClick={saveSmtp} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Email Settings'}
+          </button>
+          </>
+          )}
         </div>
       )}
 
@@ -877,83 +1078,46 @@ export default function SettingsPage() {
       {/* Branding Settings */}
       {activeTab === 'branding' && (
         <div className="settings-content">
-          <section className="settings-section">
-            <h2>Company Branding</h2>
-            <div className="form-group">
-              <label htmlFor="company-logo">Company Logo</label>
-              <div className="file-upload">
-                <input type="file" id="company-logo" accept="image/*" />
-                <button className="btn btn--secondary">Upload Logo</button>
-              </div>
-              <small>Recommended size: 300x100px, PNG or SVG format</small>
-            </div>
-            <div className="form-group">
-              <label htmlFor="favicon">Favicon</label>
-              <div className="file-upload">
-                <input type="file" id="favicon" accept="image/x-icon,image/png" />
-                <button className="btn btn--secondary">Upload Favicon</button>
-              </div>
-              <small>32x32px or 64x64px, ICO or PNG format</small>
-            </div>
-          </section>
+          <ErrorMessage message={error} />
 
-          <section className="settings-section">
-            <h2>Color Scheme</h2>
-            <div className="form-group">
-              <label htmlFor="primary-color">Primary Color</label>
-              <input type="color" id="primary-color" defaultValue="#0066cc" />
-            </div>
-            <div className="form-group">
-              <label htmlFor="secondary-color">Secondary Color</label>
-              <input type="color" id="secondary-color" defaultValue="#333333" />
-            </div>
-            <div className="form-group">
-              <label htmlFor="accent-color">Accent Color</label>
-              <input type="color" id="accent-color" defaultValue="#ff6600" />
-            </div>
-            <button className="btn btn--secondary">Reset to Default Colors</button>
-          </section>
+          {loading ? (
+            <Loader label="Loading tenant branding…" />
+          ) : (
+            <>
+              <section className="settings-section">
+                <h2>Company Branding</h2>
+                <div className="form-group">
+                  <label htmlFor="company-logo-url">Company Logo URL</label>
+                  <input
+                    type="text"
+                    id="company-logo-url"
+                    value={brandingForm.logoUrl}
+                    onChange={e => updateBrandingField('logoUrl', e.target.value)}
+                    placeholder="https://example.com/logo.png"
+                  />
+                  <small>Logo URL used in the sidebar and emails.</small>
+                </div>
+              </section>
 
-          <section className="settings-section">
-            <h2>Custom Domain</h2>
-            <div className="form-group">
-              <label htmlFor="custom-domain">Custom Domain</label>
-              <input 
-                type="text" 
-                id="custom-domain" 
-                placeholder="training.company.com"
-              />
-              <small>Configure your own domain for the training portal</small>
-            </div>
-            <div className="alert alert--info">
-              <strong>DNS Configuration Required:</strong>
-              <p>Add the following CNAME record to your DNS:</p>
-              <code>training.company.com CNAME platform.phishdaddy.com</code>
-            </div>
-            <button className="btn btn--secondary">Verify Domain</button>
-          </section>
+              <section className="settings-section">
+                <h2>Color Scheme</h2>
+                <div className="form-group">
+                  <label htmlFor="primary-color">Primary Color</label>
+                  <input
+                    type="text"
+                    id="primary-color"
+                    value={brandingForm.primaryColorHex}
+                    onChange={e => updateBrandingField('primaryColorHex', e.target.value)}
+                    placeholder="#2563eb"
+                  />
+                </div>
+              </section>
 
-          <section className="settings-section">
-            <h2>Email Branding</h2>
-            <div className="form-group checkbox-group">
-              <input type="checkbox" id="use-logo-emails" defaultChecked />
-              <label htmlFor="use-logo-emails">Include Company Logo in Training Emails</label>
-            </div>
-            <div className="form-group">
-              <label htmlFor="email-header-color">Email Header Color</label>
-              <input type="color" id="email-header-color" defaultValue="#0066cc" />
-            </div>
-            <div className="form-group">
-              <label htmlFor="email-footer">Email Footer Text</label>
-              <textarea 
-                id="email-footer" 
-                rows="3"
-                placeholder="© 2026 Your Company. All rights reserved."
-              ></textarea>
-            </div>
-          </section>
-
-          <button className="btn btn--primary">Save Branding Settings</button>
+              <button className="btn btn--primary" onClick={saveBranding} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Branding Settings'}
+              </button>
+            </>
+          )}
         </div>
       )}
 

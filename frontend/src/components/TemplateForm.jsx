@@ -5,7 +5,10 @@ import ErrorMessage from "./ErrorMessage";
 const INITIAL_FORM = {
   name: "",
   subject: "",
-  htmlContent: ""
+  htmlContent: "",
+  category: "",
+  difficulty: "",
+  tagsCsv: ""
 };
 
 export default function TemplateForm({
@@ -26,9 +29,17 @@ export default function TemplateForm({
       eager: true
     });
 
+    const meta = {
+      "document-share": { category: "IT", difficulty: "Medium", tagsCsv: "document,share,spoofed" },
+      "urgent-invoice": { category: "Finance", difficulty: "Hard", tagsCsv: "invoice,finance,urgent" },
+      "extortion-security-alert": { category: "Security", difficulty: "Hard", tagsCsv: "extortion,security,alert" },
+      "it-support-verification": { category: "IT", difficulty: "Easy", tagsCsv: "it,support,verification" },
+      "caught": { category: "Training", difficulty: "VeryEasy", tagsCsv: "training,awareness" }
+    };
+
     return Object.keys(modules).map((p) => {
       const name = p.split("/").pop().replace(/\.html$/i, "");
-      return { name, content: modules[p] };
+      return { name, content: modules[p], ...(meta[name] || {}) };
     });
   }, []);
 
@@ -43,7 +54,10 @@ export default function TemplateForm({
       setForm({
         name: initialTemplate.name || "",
         subject: initialTemplate.subject || "",
-        htmlContent: initialTemplate.htmlContent || ""
+        htmlContent: initialTemplate.htmlContent || "",
+        category: initialTemplate.category || "",
+        difficulty: initialTemplate.difficulty || "",
+        tagsCsv: initialTemplate.tagsCsv || ""
       });
     } else {
       setForm(INITIAL_FORM);
@@ -67,6 +81,20 @@ export default function TemplateForm({
     );
   }
 
+  function ensureTrackingPlaceholders(html) {
+    let updated = html;
+
+    if (!updated.includes("{{ClickLink}}")) {
+      updated += "\n\n<p><a href=\"{{ClickLink}}\">View document</a></p>";
+    }
+
+    if (!updated.includes("{{TrackingPixel}}")) {
+      updated += "\n\n{{TrackingPixel}}";
+    }
+
+    return updated;
+  }
+
   /* =========================
      Submit
      ========================= */
@@ -86,7 +114,10 @@ export default function TemplateForm({
       const dto = {
         name: form.name.trim(),
         subject: form.subject.trim(),
-        htmlContent: form.htmlContent
+        htmlBody: ensureTrackingPlaceholders(form.htmlContent),
+        category: form.category?.trim() || null,
+        difficulty: form.difficulty?.trim() || null,
+        tagsCsv: form.tagsCsv?.trim() || null
       };
 
       if (isEdit) {
@@ -173,7 +204,13 @@ export default function TemplateForm({
             id="template-built-in"
             onChange={e => {
               const idx = e.target.selectedIndex - 1;
-              if (idx >= 0) updateField("htmlContent", builtInTemplates[idx].content);
+              if (idx >= 0) {
+                const t = builtInTemplates[idx];
+                updateField("htmlContent", t.content);
+                if (t.category) updateField("category", t.category);
+                if (t.difficulty) updateField("difficulty", t.difficulty);
+                if (t.tagsCsv) updateField("tagsCsv", t.tagsCsv);
+              }
             }}
             defaultValue=""
           >
@@ -201,6 +238,46 @@ export default function TemplateForm({
         <small className="form-hint">
           Raw HTML is sent as-is. Inline CSS is recommended.
         </small>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="template-category">Category</label>
+          <input
+            id="template-category"
+            type="text"
+            value={form.category}
+            onChange={e => updateField("category", e.target.value)}
+            placeholder="Finance, HR, IT, Delivery"
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="template-difficulty">Difficulty</label>
+          <select
+            id="template-difficulty"
+            value={form.difficulty}
+            onChange={e => updateField("difficulty", e.target.value)}
+          >
+            <option value="">Select difficulty…</option>
+            <option value="VeryEasy">VeryEasy</option>
+            <option value="Easy">Easy</option>
+            <option value="Medium">Medium</option>
+            <option value="Hard">Hard</option>
+            <option value="VeryHard">VeryHard</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="template-tags">Tags</label>
+        <input
+          id="template-tags"
+          type="text"
+          value={form.tagsCsv}
+          onChange={e => updateField("tagsCsv", e.target.value)}
+          placeholder="invoice, spoofed-brand, finance"
+        />
+        <small className="form-hint">Comma-separated tags</small>
       </div>
 
       <div className="form-actions">

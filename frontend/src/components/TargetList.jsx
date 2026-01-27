@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Papa from "papaparse";
 import { api } from "../api/client";
 import Loader from "./Loader";
 import ErrorMessage from "./ErrorMessage";
@@ -10,6 +11,8 @@ export default function TargetList({ group, reloadKey }) {
 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [actionError, setActionError] = useState("");
+  const [bulkRows, setBulkRows] = useState([]);
+  const [bulkErrors, setBulkErrors] = useState([]);
 
   /* =========================
      Load
@@ -28,7 +31,7 @@ export default function TargetList({ group, reloadKey }) {
       try {
         setLoading(true);
         setError("");
-        const data = await api.get(`/api/targets?groupId=${group.id}`);
+        const data = await api.get(`/api/targets/groups/${group.id}/targets`);
         if (!cancelled) {
           setTargets(data);
         }
@@ -75,6 +78,47 @@ export default function TargetList({ group, reloadKey }) {
      Render
      ========================= */
 
+  function handleBulkFile(file) {
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows = results.data.map(r => ({
+          email: (r.email || r.Email || '').trim(),
+          displayName: (r.displayName || r.DisplayName || r.name || r.Name || '').trim(),
+          department: (r.department || r.Department || '').trim(),
+          managerEmail: (r.managerEmail || r.ManagerEmail || '').trim(),
+          location: (r.location || r.Location || '').trim()
+        }));
+
+        const errors = [];
+        rows.forEach((r, idx) => {
+          if (!r.email) errors.push(`Row ${idx + 1}: missing email`);
+        });
+
+        setBulkRows(rows);
+        setBulkErrors(errors);
+      }
+    });
+  }
+
+  async function handleBulkImport() {
+    if (!group || bulkRows.length === 0) return;
+    try {
+      setActionError("");
+      await api.post(`/api/targets/groups/${group.id}/targets/bulk`, bulkRows);
+      setBulkRows([]);
+      setBulkErrors([]);
+      // reload list
+      const data = await api.get(`/api/targets/groups/${group.id}/targets`);
+      setTargets(data);
+    } catch (err) {
+      setActionError(err?.message || "Failed to bulk import targets.");
+    }
+  }
+
   return (
     <section className="target-list">
       <header className="list-header">
@@ -84,6 +128,22 @@ export default function TargetList({ group, reloadKey }) {
       </header>
 
       <ErrorMessage message={error || actionError} />
+
+      <div className="doc-section">
+        <h4>Bulk import (CSV)</h4>
+        <p className="muted small">Columns: email, displayName, department, managerEmail, location</p>
+        <input type="file" accept=".csv" onChange={(e) => handleBulkFile(e.target.files?.[0])} />
+        {bulkErrors.length > 0 && (
+          <div className="doc-callout">
+            {bulkErrors.map((e, i) => (<div key={i}>{e}</div>))}
+          </div>
+        )}
+        {bulkRows.length > 0 && (
+          <button className="btn btn--primary" onClick={handleBulkImport} disabled={bulkErrors.length > 0}>
+            Import targets
+          </button>
+        )}
+      </div>
 
       {targets.length === 0 ? (
         <p className="empty-state">
@@ -105,7 +165,7 @@ export default function TargetList({ group, reloadKey }) {
 
               return (
                 <tr key={t.id}>
-                  <td>{t.name}</td>
+                  <td>{t.displayName || "—"}</td>
                   <td>{t.email}</td>
                   <td>
                     <span
