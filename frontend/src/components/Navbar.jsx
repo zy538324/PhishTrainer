@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { id: "campaigns", label: "Campaigns" },
   { id: "templates", label: "Templates" },
   { id: "targets", label: "Targets" },
+  { id: "tenants", label: "Tenants" },
   { id: "settings", label: "Settings" }
 ];
 

@@ -31,6 +31,15 @@ public class TenantMiddleware
         ITenantResolver tenantResolver,
         IMemoryCache cache)
     {
+        // Allow tenant administration endpoints to run without resolving a tenant.
+        // This enables management of Tenants themselves (e.g. creating the "default" tenant)
+        // before any tenant subdomain/header is available.
+        var path = context.Request.Path;
+        if (path.StartsWithSegments("/api/tenants") || path.StartsWithSegments("/api/admin/tenants") || path.StartsWithSegments("/swagger"))
+        {
+            await _next(context);
+            return;
+        }
         // 1) Identify tenant slug
         var slug = ResolveTenantSlug(context);
 

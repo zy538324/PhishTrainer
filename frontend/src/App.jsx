@@ -12,6 +12,7 @@ import TargetForm from './components/TargetForm';
 import TargetList from './components/TargetList';
 import SettingsForm from './components/SettingsForm';
 import SettingsPage from './pages/Settings';
+import TenantsPage from './pages/Tenants';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('campaigns');
@@ -136,6 +137,18 @@ export default function App() {
     );
   }
 
+  function renderTenants() {
+    return (
+      <div className="tab-content tab-content--tenants">
+        <div className="layout-two-columns">
+          <div className="col col--wide">
+            <TenantsPage />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <Navbar activeTab={activeTab} onNavigate={setActiveTab} />
@@ -144,6 +157,7 @@ export default function App() {
         {activeTab === 'templates' && renderTemplates()}
         {activeTab === 'targets' && renderTargets()}
         {activeTab === 'settings' && renderSettings()}
+        {activeTab === 'tenants' && renderTenants()}
       </main>
     </div>
   );

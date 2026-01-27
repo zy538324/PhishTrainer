@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api/client";
 import ErrorMessage from "./ErrorMessage";
 
@@ -16,6 +16,21 @@ export default function TemplateForm({
   const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Load built-in HTML templates from src/templates (Vite raw import)
+  const builtInTemplates = useMemo(() => {
+    // import.meta.glob returns an object mapping paths -> content when eager + as: 'raw' are used
+    // eslint-disable-next-line no-undef
+    const modules = import.meta.glob("../templates/*.html", {
+      as: "raw",
+      eager: true
+    });
+
+    return Object.keys(modules).map((p) => {
+      const name = p.split("/").pop().replace(/\.html$/i, "");
+      return { name, content: modules[p] };
+    });
+  }, []);
 
   const isEdit = Boolean(initialTemplate?.id);
 
@@ -150,6 +165,26 @@ export default function TemplateForm({
           required
         />
       </div>
+
+      {builtInTemplates.length > 0 && (
+        <div className="form-group">
+          <label htmlFor="template-built-in">Built-in template</label>
+          <select
+            id="template-built-in"
+            onChange={e => {
+              const idx = e.target.selectedIndex - 1;
+              if (idx >= 0) updateField("htmlContent", builtInTemplates[idx].content);
+            }}
+            defaultValue=""
+          >
+            <option value="">-- choose a built-in template --</option>
+            {builtInTemplates.map((t, i) => (
+              <option key={t.name} value={t.name}>{t.name}</option>
+            ))}
+          </select>
+          <small className="form-hint">Select to load a built-in HTML template into the editor.</small>
+        </div>
+      )}
 
       <div className="form-group">
         <label htmlFor="template-html">
