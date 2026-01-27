@@ -20,6 +20,7 @@ public class MailService : IMailService
     private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<MailService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _configuration;
 
     // Simple in-memory token cache per service instance
     private AuthenticationResult? _cachedGraphToken;
@@ -29,12 +30,14 @@ public class MailService : IMailService
         PhishDbContext db,
         ITenantResolver tenantResolver,
         ILogger<MailService> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration)
     {
         _db = db;
         _tenantResolver = tenantResolver;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
     }
 
     public async Task SendPhishingMailAsync(
@@ -51,7 +54,17 @@ public class MailService : IMailService
 
         ValidateTenantMailConfig(tenant);
 
-        var bodyWithTracking = BuildHtmlBodyWithTracking(htmlBody, trackingToken);
+        var target = await _db.TargetUsers.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == targetUserId && u.TenantId == tenantId, ct);
+
+        var baseUrl = GetPublicBaseUrl();
+        var bodyWithTracking = BuildHtmlBodyWithTracking(
+            htmlBody,
+            trackingToken,
+            baseUrl,
+            tenant,
+            target,
+            toAddress);
 
         try
         {
@@ -207,15 +220,39 @@ public class MailService : IMailService
             || statusCode == SmtpStatusCode.ExceededStorageAllocation;
     }
 
-    private static string BuildHtmlBodyWithTracking(string htmlBody, string token)
+    private string GetPublicBaseUrl()
     {
-        var bodyWithTracking = htmlBody
-            .Replace("{{TrackingPixel}}",
-                $"<img src=\"https://phishtrainer.local/api/tracking/o/{token}.png\" " +
-                "width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />")
-            .Replace("{{ClickLink}}",
-                $"https://phishtrainer.local/api/tracking/t/{token}");
-        return bodyWithTracking;
+        var baseUrl = _configuration["PublicBaseUrl"] ?? "http://localhost:5018";
+        return baseUrl.TrimEnd('/');
+    }
+
+    private static string BuildHtmlBodyWithTracking(
+        string htmlBody,
+        string token,
+        string baseUrl,
+        Tenant tenant,
+        TargetUser? target,
+        string toAddress)
+    {
+        var openUrl = $"{baseUrl}/api/tracking/o/{token}.png";
+        var clickUrl = $"{baseUrl}/api/tracking/t/{token}";
+
+        var name = target?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            name = target?.Email ?? toAddress;
+
+        var senderName = tenant.SmtpDisplayName ?? tenant.Name;
+
+        return htmlBody
+            .Replace("{{TrackingPixel}}", $"<img src=\"{openUrl}\" width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />")
+            .Replace("{{ClickLink}}", clickUrl)
+            .Replace("{{trackOpenUrl}}", openUrl)
+            .Replace("{{trackClickUrl}}", clickUrl)
+            .Replace("{{link}}", clickUrl)
+            .Replace("{{name}}", name)
+            .Replace("{{email}}", target?.Email ?? toAddress)
+            .Replace("{{sender}}", senderName)
+            .Replace("{{senderEmail}}", tenant.SmtpFromAddress ?? string.Empty);
     }
 
     private MimeMessage BuildMimeMessage(
