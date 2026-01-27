@@ -30,4 +30,37 @@ public class TenantMiddleware
         ((TenantResolver)tenantResolver).SetTenant(tenant.Id, tenant.Slug);
         await _next(context);
     }
+    // in TenantMiddleware.cs, inside InvokeAsync
+
+// 1) Prefer explicit header if present
+var slug = context.Request.Headers["X-Tenant"].FirstOrDefault();
+if (string.IsNullOrWhiteSpace(slug))
+{
+    var host = context.Request.Host.Host;
+    var parts = host.Split('.');
+    slug = parts.Length > 2 ? parts[0] : "default";
 }
+
+// 2) Simple in-memory cache (per instance)
+var cache = context.RequestServices.GetRequiredService<IMemoryCache>();
+var cacheKey = $"tenant:{slug}";
+
+if (!cache.TryGetValue(cacheKey, out Tenant? tenant))
+{
+    tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Slug == slug && t.IsActive);
+
+    if (tenant == null)
+    {
+        _logger.LogWarning("Tenant not found for slug: {Slug}", slug);
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        await context.Response.WriteAsJsonAsync(new { error = "Tenant not found" });
+        return;
+    }
+
+    cache.Set(cacheKey, tenant, TimeSpan.FromMinutes(5));
+}
+
+tenantResolver.SetTenant(tenant.Id, tenant.Slug);
+
+}
+
