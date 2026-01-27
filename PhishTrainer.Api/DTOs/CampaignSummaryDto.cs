@@ -1,29 +1,43 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace PhishTrainer.Api.DTOs;
 
 /// <summary>
-/// Aggregated metrics for a phishing campaign.
-/// Mirrors common KPIs in phishing simulation tools.[web:171][web:165][web:169]
+/// Payload to create or update a phishing email template.
+/// Includes metadata for category, difficulty, and tags.[web:193][web:194][web:201]
 /// </summary>
-public class CampaignSummaryDto
+public class CreateTemplateDto
 {
-    public int CampaignId { get; set; }
+    [Required]
+    [MaxLength(128)]
     public string Name { get; set; } = string.Empty;
 
-    public int TotalSent { get; set; }
-    public int TotalOpen { get; set; }
-    public int TotalClick { get; set; }
-    public int TotalSubmitted { get; set; }
-    public int TotalReported { get; set; }
+    [Required]
+    [MaxLength(256)]
+    public string Subject { get; set; } = string.Empty;
 
-    /// <summary>Open rate (%) = opens / sent.</summary>
-    public double OpenRate { get; set; }
+    /// <summary>
+    /// HTML content of the email.
+    /// Must contain {{TrackingPixel}} and {{ClickLink}} (validated in TemplatesController).[web:205][web:141]
+    /// </summary>
+    [Required]
+    public string HtmlBody { get; set; } = string.Empty;
 
-    /// <summary>Click rate (%) = clicks / sent.</summary>
-    public double ClickRate { get; set; }
+    /// <summary>
+    /// Optional logical category (HR, IT, Delivery, Finance, etc.).[web:193][web:197]
+    /// </summary>
+    [MaxLength(64)]
+    public string? Category { get; set; }
 
-    /// <summary>Submission rate (%) = submissions / sent.</summary>
-    public double SubmittedRate { get; set; }
+    /// <summary>
+    /// Difficulty label such as VeryEasy, Easy, Medium, Hard, VeryHard.[web:194][web:201][web:212]
+    /// </summary>
+    [MaxLength(32)]
+    public string? Difficulty { get; set; }
 
-    /// <summary>Report rate (%) = reports / sent.</summary>
-    public double ReportedRate { get; set; }
+    /// <summary>
+    /// Optional comma-separated tags (e.g. "hr,internal,spoofed-brand").[web:193]
+    /// </summary>
+    [MaxLength(256)]
+    public string? TagsCsv { get; set; }
 }
