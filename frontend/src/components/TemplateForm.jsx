@@ -1,133 +1,194 @@
-// src/components/TemplateForm.jsx
-import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import ErrorMessage from './ErrorMessage';
+import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
+import ErrorMessage from "./ErrorMessage";
 
-export default function TemplateForm({ onCreated, onUpdated, initialTemplate }) {
-  const [name, setName] = useState('');
-  const [subject, setSubject] = useState('');
-  const [htmlContent, setHtmlContent] = useState('');
+const INITIAL_FORM = {
+  name: "",
+  subject: "",
+  htmlContent: ""
+};
+
+export default function TemplateForm({
+  onCreated,
+  onUpdated,
+  initialTemplate
+}) {
+  const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  const isEdit = !!(initialTemplate && initialTemplate.id);
+  const isEdit = Boolean(initialTemplate?.id);
 
-  // When initialTemplate changes (e.g. user selects a template to edit),
-  // sync its values into the form.
+  /* =========================
+     Sync selected template
+     ========================= */
+
   useEffect(() => {
-    if (initialTemplate) {
-      setName(initialTemplate.name || '');
-      setSubject(initialTemplate.subject || '');
-      setHtmlContent(initialTemplate.htmlContent || '');
+    if (isEdit) {
+      setForm({
+        name: initialTemplate.name || "",
+        subject: initialTemplate.subject || "",
+        htmlContent: initialTemplate.htmlContent || ""
+      });
     } else {
-      setName('');
-      setSubject('');
-      setHtmlContent('');
+      setForm(INITIAL_FORM);
     }
-  }, [initialTemplate]);
+    setError("");
+  }, [initialTemplate?.id]);
+
+  /* =========================
+     Helpers
+     ========================= */
+
+  function updateField(name, value) {
+    setForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  function isValid() {
+    return (
+      form.name.trim() &&
+      form.subject.trim() &&
+      form.htmlContent.trim()
+    );
+  }
+
+  /* =========================
+     Submit
+     ========================= */
 
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (!name || !subject || !htmlContent) {
-      setError('Name, subject, and content are required.');
+    if (!isValid()) {
+      setError("Template name, subject, and HTML content are required.");
       return;
     }
 
-    setError('');
+    setError("");
     setSaving(true);
 
     try {
       const dto = {
-        name,
-        subject,
-        htmlContent,
+        name: form.name.trim(),
+        subject: form.subject.trim(),
+        htmlContent: form.htmlContent
       };
 
       if (isEdit) {
-        // Update existing
         await api.put(`/api/templates/${initialTemplate.id}`, dto);
-        if (onUpdated) onUpdated();
+        onUpdated?.();
       } else {
-        // Create new
-        await api.post('/api/templates', dto);
-        if (onCreated) onCreated();
-      }
-
-      // Clear only when creating; for edit you usually keep values
-      if (!isEdit) {
-        setName('');
-        setSubject('');
-        setHtmlContent('');
+        await api.post("/api/templates", dto);
+        onCreated?.();
+        setForm(INITIAL_FORM);
       }
     } catch (err) {
-      setError(err.message || 'Failed to save template.');
+      setError(err?.message || "Failed to save template.");
     } finally {
       setSaving(false);
     }
   }
 
   function handleReset() {
-    if (initialTemplate) {
-      setName(initialTemplate.name || '');
-      setSubject(initialTemplate.subject || '');
-      setHtmlContent(initialTemplate.htmlContent || '');
+    if (isEdit) {
+      setForm({
+        name: initialTemplate.name || "",
+        subject: initialTemplate.subject || "",
+        htmlContent: initialTemplate.htmlContent || ""
+      });
     } else {
-      setName('');
-      setSubject('');
-      setHtmlContent('');
+      setForm(INITIAL_FORM);
     }
-    setError('');
+    setError("");
   }
 
+  /* =========================
+     Render
+     ========================= */
+
   return (
-    <form className="template-form" onSubmit={handleSubmit}>
-      <h2>{isEdit ? 'Edit email template' : 'Create email template'}</h2>
+    <form
+      className="template-form"
+      onSubmit={handleSubmit}
+      noValidate
+    >
+      <header className="form-header">
+        <h2>{isEdit ? "Edit email template" : "Create email template"}</h2>
+        <p className="form-subtitle">
+          {isEdit
+            ? "Changes will affect future campaigns using this template."
+            : "Define the content used in phishing simulations."}
+        </p>
+      </header>
 
       <ErrorMessage message={error} />
 
-      <label>
-        Template name
+      <div className="form-group">
+        <label htmlFor="template-name">
+          Template name <span aria-hidden>*</span>
+        </label>
         <input
+          id="template-name"
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={e => updateField("name", e.target.value)}
+          placeholder="Invoice Reminder – Finance"
           required
         />
-      </label>
+      </div>
 
-      <label>
-        Subject line
+      <div className="form-group">
+        <label htmlFor="template-subject">
+          Subject line <span aria-hidden>*</span>
+        </label>
         <input
+          id="template-subject"
           type="text"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
+          value={form.subject}
+          onChange={e => updateField("subject", e.target.value)}
+          placeholder="Urgent: Outstanding invoice"
           required
         />
-      </label>
+      </div>
 
-      <label>
-        HTML content
+      <div className="form-group">
+        <label htmlFor="template-html">
+          HTML content <span aria-hidden>*</span>
+        </label>
         <textarea
-          value={htmlContent}
-          onChange={(e) => setHtmlContent(e.target.value)}
-          rows={12}
-          placeholder="<html>...</html>"
+          id="template-html"
+          value={form.htmlContent}
+          onChange={e => updateField("htmlContent", e.target.value)}
+          rows={14}
+          placeholder="<html>…</html>"
           required
         />
-      </label>
+        <small className="form-hint">
+          Raw HTML is sent as-is. Inline CSS is recommended.
+        </small>
+      </div>
 
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button
+          type="submit"
+          className="btn btn--primary"
+          disabled={saving || !isValid()}
+        >
           {saving
             ? isEdit
-              ? 'Updating…'
-              : 'Saving…'
+              ? "Updating template…"
+              : "Saving template…"
             : isEdit
-            ? 'Update template'
-            : 'Save template'}
+            ? "Update template"
+            : "Save template"}
         </button>
-        <button type="button" onClick={handleReset} disabled={saving}>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={handleReset}
+          disabled={saving}
+        >
           Reset
         </button>
       </div>

@@ -59,13 +59,22 @@
               "target": "Package",
               "version": "[10.0.2, )"
             },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
             "Microsoft.EntityFrameworkCore.SqlServer": {
               "target": "Package",
-              "version": "[10.0.2, )"
+              "version": "[10.0.0, )"
             },
             "MimeKit": {
               "target": "Package",
               "version": "[4.14.0, )"
+            },
+            "Npgsql.EntityFrameworkCore.PostgreSQL": {
+              "target": "Package",
+              "version": "[10.0.0, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",

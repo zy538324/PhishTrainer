@@ -1,72 +1,104 @@
-// src/components/TargetGroupForm.jsx
-import React, { useState } from 'react';
-import { api } from '../api/client';
-import ErrorMessage from './ErrorMessage';
+import React, { useState } from "react";
+import { api } from "../api/client";
+import ErrorMessage from "./ErrorMessage";
+
+const INITIAL_FORM = {
+  name: "",
+  description: ""
+};
 
 export default function TargetGroupForm({ onCreated }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
+  function updateField(name, value) {
+    setForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  function isValid() {
+    return form.name.trim();
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (!name) {
-      setError('Name is required.');
+    if (!isValid()) {
+      setError("Group name is required.");
       return;
     }
 
-    setError('');
+    setError("");
     setSaving(true);
 
     try {
       const dto = {
-        name,
-        description,
+        name: form.name.trim(),
+        description: form.description.trim()
       };
 
-      await api.post('/api/targets/groups', dto);
+      await api.post("/api/targets/groups", dto);
 
-      setName('');
-      setDescription('');
-
-      if (onCreated) onCreated();
+      setForm(INITIAL_FORM);
+      onCreated?.();
     } catch (err) {
-      setError(err.message || 'Failed to create target group.');
+      setError(err?.message || "Failed to create target group.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form className="target-group-form" onSubmit={handleSubmit}>
-      <h2>Create target group</h2>
+    <form
+      className="target-group-form"
+      onSubmit={handleSubmit}
+      noValidate
+    >
+      <header className="form-header">
+        <h2>Create target group</h2>
+        <p className="form-subtitle">
+          Organise users for targeted phishing simulations.
+        </p>
+      </header>
 
       <ErrorMessage message={error} />
 
-      <label>
-        Group name
+      <div className="form-group">
+        <label htmlFor="group-name">
+          Group name <span aria-hidden>*</span>
+        </label>
         <input
+          id="group-name"
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={e => updateField("name", e.target.value)}
+          placeholder="Finance Department"
           required
         />
-      </label>
+      </div>
 
-      <label>
-        Description (optional)
+      <div className="form-group">
+        <label htmlFor="group-description">
+          Description
+        </label>
         <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          id="group-description"
+          value={form.description}
+          onChange={e => updateField("description", e.target.value)}
           rows={4}
+          placeholder="Employees handling invoices and payments"
         />
-      </label>
+      </div>
 
-      <button type="submit" disabled={saving}>
-        {saving ? 'Creating…' : 'Create group'}
-      </button>
+      <div className="form-actions">
+        <button
+          type="submit"
+          className="btn btn--primary"
+          disabled={saving || !isValid()}
+        >
+          {saving ? "Creating group…" : "Create group"}
+        </button>
+      </div>
     </form>
   );
 }

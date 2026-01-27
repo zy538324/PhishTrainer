@@ -10,6 +10,8 @@ import TargetGroupForm from './components/TargetGroupForm';
 import TargetGroupList from './components/TargetGroupList';
 import TargetForm from './components/TargetForm';
 import TargetList from './components/TargetList';
+import SettingsForm from './components/SettingsForm';
+import SettingsPage from './pages/Settings';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('campaigns');
@@ -36,7 +38,6 @@ export default function App() {
 
   function handleTargetCreated() {
     setTargetListKey((k) => k + 1);
-    // also refresh group counts, since active/total may change
     handleGroupCreated();
   }
 
@@ -91,7 +92,7 @@ export default function App() {
               key={groupListKey}
               onSelectGroup={(g) => {
                 setSelectedGroup(g);
-                setTargetListKey((k) => k + 1); // reload targets when group changes
+                setTargetListKey((k) => k + 1);
               }}
               onChanged={handleGroupCreated}
             />
@@ -107,7 +108,10 @@ export default function App() {
                   {selectedGroup.totalTargets}
                 </p>
 
-                <TargetForm group={selectedGroup} onCreated={handleTargetCreated} />
+                <TargetForm
+                  group={selectedGroup}
+                  onCreated={handleTargetCreated}
+                />
                 <TargetList
                   group={selectedGroup}
                   reloadKey={targetListKey}
@@ -125,8 +129,9 @@ export default function App() {
   function renderSettings() {
     return (
       <div className="tab-content tab-content--settings">
-        <h2>Settings</h2>
-        <p>Coming soon: SMTP settings, default sender, etc.</p>
+        <SettingsForm>
+          <SettingsPage />
+        </SettingsForm>
       </div>
     );
   }

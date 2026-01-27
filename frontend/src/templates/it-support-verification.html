@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Account Verification Required</title>
+
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #f3f4f6;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #1f2937;
+      }
+
+      .container {
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: #ffffff;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+
+      .header {
+        background-color: #0f172a;
+        color: #ffffff;
+        padding: 16px 24px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+
+      .content {
+        padding: 24px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .content p {
+        margin: 0 0 16px 0;
+      }
+
+      .cta {
+        display: inline-block;
+        padding: 12px 18px;
+        background-color: #2563eb;
+        color: #ffffff !important;
+        text-decoration: none;
+        font-weight: bold;
+        border-radius: 4px;
+      }
+
+      .cta:hover {
+        background-color: #1d4ed8;
+      }
+
+      .footer {
+        padding: 16px 24px;
+        font-size: 12px;
+        color: #6b7280;
+        background-color: #f9fafb;
+      }
+    </style>
+
+    <!-- Interaction tracking: email open -->
+    <script>
+      (function () {
+        try {
+          var img = new Image();
+          img.src = "{{trackOpenUrl}}?t=" + Date.now();
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="header">
+        IT Service Desk Notification
+      </div>
+
+      <div class="content">
+        <p>Hello {{name}},</p>
+
+        <p>
+          Our monitoring systems have detected a potential issue with your
+          corporate account.
+        </p>
+
+        <p>
+          To prevent temporary suspension of access, we require you to
+          verify your account details.
+        </p>
+
+        <p>
+          Please complete verification within the next
+          <strong>2 hours</strong>.
+        </p>
+
+        <p>
+          <a
+            href="{{link}}"
+            class="cta"
+            onclick="try {
+              var i = new Image();
+              i.src = '{{trackClickUrl}}?t=' + Date.now();
+            } catch (e) {}"
+          >
+            Verify account now
+          </a>
+        </p>
+
+        <p>
+          If no action is taken, access to email and internal systems
+          may be restricted.
+        </p>
+
+        <p>
+          IT Support Team<br />
+          Service Desk
+        </p>
+      </div>
+
+      <div class="footer">
+        This message was generated automatically. Do not reply.
+      </div>
+    </div>
+
+    <!-- Fallback open tracking (no JS) -->
+    <img
+      src="{{trackOpenUrl}}"
+      width="1"
+      height="1"
+      style="display:none;"
+      alt=""
+    />
+  </body>
+</html>

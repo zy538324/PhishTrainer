@@ -16,9 +16,9 @@ builder.Services.AddSwaggerGen();
 // Caching
 builder.Services.AddMemoryCache();
 
-// DbContext
+// DbContext (PostgreSQL)
 builder.Services.AddDbContext<PhishDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Multi-tenancy + services
 builder.Services.AddScoped<ITenantResolver, TenantResolver>();

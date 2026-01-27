@@ -1,0 +1,26 @@
+[
+  {
+    "slug": "urgent-invoice",
+    "name": "Urgent Invoice – Outstanding Balance",
+    "subject": "URGENT: Invoice Past Due",
+    "file": "urgent-invoice.html"
+  },
+  {
+    "slug": "it-support-verification",
+    "name": "IT Support – Account Verification",
+    "subject": "Action required: Verify your account",
+    "file": "it-support-verification.html"
+  },
+  {
+    "slug": "document-share",
+    "name": "Document Shared – Review Required",
+    "subject": "{{sender}} has shared a document with you",
+    "file": "document-share.html"
+  },
+  {
+    "slug": "extortion-security-alert",
+    "name": "Security Alert – Unauthorised Access",
+    "subject": "I have access to your account",
+    "file": "extortion-security-alert.html"
+  }
+]

@@ -2,10 +2,89 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>PhishnCatch</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Phish'n'Catch - Advanced Phishing Training & Security Awareness Platform</title>
+    <meta name="title" content="Phish'n'Catch - Advanced Phishing Training & Security Awareness Platform" />
+    <meta name="description" content="Protect your organization with Phish'n'Catch's comprehensive phishing simulation and security awareness training. Reduce human risk through realistic campaigns and interactive training modules." />
+    <meta name="keywords" content="phishing training, security awareness, phishing simulation, cybersecurity training, email security, employee training, cyber threats" />
+    <meta name="author" content="Phish'n'Catch" />
+    <meta name="robots" content="index, follow" />
+    
+    
+    
+    <!-- Structured Data for SEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Phish'n'Catch",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Web",
+      "description": "Advanced phishing training and security awareness platform for organizations",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "127"
+      }
+    }
+    </script>
+    
+    <!-- Global styles are loaded via the app bundle (imported from /src/main.jsx) -->
   </head>
   <body>
+    <!-- No Script Fallback -->
+    <noscript>
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        flex-direction: column;
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 20px;
+      ">
+        <h1>JavaScript Required</h1>
+        <p>Phish'n'Catch requires JavaScript to be enabled in your browser.</p>
+        <p>Please enable JavaScript and reload the page.</p>
+      </div>
+    </noscript>
+    
+    <!-- Loading Indicator -->
+    <div class="app-loading" aria-label="Loading application" role="status">
+      <span class="sr-only">Loading Phish'n'Catch...</span>
+    </div>
+    
+    <!-- Main Application Root -->
     <div id="root"></div>
+    
+    <!-- Main Application Script -->
     <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- Remove Loading Indicator Once App Loads -->
+    <script>
+      window.addEventListener('load', () => {
+        document.body.classList.add('app-loaded');
+      });
+    </script>
+    
+    <!-- Analytics (Optional - Add your analytics code) -->
+    <!-- 
+    <script defer src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX');
+    </script>
+    -->
   </body>
 </html>

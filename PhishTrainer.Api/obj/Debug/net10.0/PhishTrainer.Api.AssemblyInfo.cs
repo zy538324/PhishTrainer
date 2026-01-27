@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PhishTrainer.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bd6ebd08a641b05ee0783e58d1a432e783a71c81")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+951ee4ac42ca1732bf4df0ad54e03697264f32e5")]
 [assembly: System.Reflection.AssemblyProductAttribute("PhishTrainer.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PhishTrainer.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

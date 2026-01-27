@@ -1,20 +1,28 @@
-// src/components/TargetGroupList.jsx
-import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
+import Loader from "./Loader";
+import ErrorMessage from "./ErrorMessage";
 
 export default function TargetGroupList({ onSelectGroup, onChanged }) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [actionError, setActionError] = useState("");
+
+  /* =========================
+     Load
+     ========================= */
 
   async function load() {
     try {
       setLoading(true);
-      setError('');
-      const data = await api.get('/api/targets/groups');
+      setError("");
+      const data = await api.get("/api/targets/groups");
       setGroups(data);
     } catch (err) {
-      setError(err.message || 'Failed to load groups.');
+      setError(err?.message || "Failed to load target groups.");
     } finally {
       setLoading(false);
     }
@@ -24,62 +32,115 @@ export default function TargetGroupList({ onSelectGroup, onChanged }) {
     load();
   }, []);
 
-  async function handleDelete(id) {
-    if (!window.confirm('Delete this group?')) return;
+  /* =========================
+     Delete
+     ========================= */
+
+  async function confirmDelete(id) {
+    setActionError("");
+
     try {
       await api.del(`/api/targets/groups/${id}`);
-      setGroups((prev) => prev.filter((g) => g.id !== id));
-      if (onChanged) onChanged();
+      setGroups(prev => prev.filter(g => g.id !== id));
+      setPendingDeleteId(null);
+      onChanged?.();
     } catch (err) {
-      alert(err.message || 'Failed to delete group.');
+      setActionError(err?.message || "Failed to delete target group.");
     }
   }
 
-  if (loading) return <div>Loading target groups…</div>;
-  if (error) return <div className="error">{error}</div>;
+  if (loading) {
+    return <Loader label="Loading target groups…" />;
+  }
+
+  /* =========================
+     Render
+     ========================= */
 
   return (
-    <div className="target-group-list">
-      <h2>Target groups</h2>
+    <section className="target-group-list">
+      <header className="list-header">
+        <h2>Target groups</h2>
+      </header>
+
+      <ErrorMessage message={error || actionError} />
+
       {groups.length === 0 ? (
-        <p>No target groups yet.</p>
+        <p className="empty-state">
+          No target groups have been created yet.
+        </p>
       ) : (
-        <table>
+        <table className="table table--groups">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Active / Total</th>
-              <th>Actions</th>
+              <th scope="col">Name</th>
+              <th scope="col">Description</th>
+              <th scope="col">Active / Total</th>
+              <th scope="col" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => (
-              <tr key={g.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => onSelectGroup && onSelectGroup(g)}
-                  >
-                    {g.name}
-                  </button>
-                </td>
-                <td>{g.description}</td>
-                <td>
-                  {g.activeTargets}/{g.totalTargets}
-                </td>
-                <td>
-                  <button type="button" onClick={() => handleDelete(g.id)}>
-                    Delete
-                  </button>
-                  {/* Add edit/view members later */}
-                </td>
-              </tr>
-            ))}
+            {groups.map(g => {
+              const isDeleting = pendingDeleteId === g.id;
+
+              return (
+                <tr key={g.id}>
+                  <td>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => onSelectGroup?.(g)}
+                    >
+                      {g.name}
+                    </button>
+                  </td>
+
+                  <td>{g.description || "—"}</td>
+
+                  <td>
+                    {g.activeTargets}/{g.totalTargets}
+                  </td>
+
+                  <td className="table-actions">
+                    {isDeleting ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn--small btn--danger"
+                          onClick={() => confirmDelete(g.id)}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--small"
+                          onClick={() => {
+                            setPendingDeleteId(null);
+                            setActionError("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn--small btn--danger"
+                        onClick={() => {
+                          setPendingDeleteId(g.id);
+                          setActionError("");
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }

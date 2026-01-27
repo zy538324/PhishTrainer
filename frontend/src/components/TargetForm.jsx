@@ -1,78 +1,109 @@
-// src/components/TargetForm.jsx
-import React, { useState } from 'react';
-import { api } from '../api/client';
-import ErrorMessage from './ErrorMessage';
+import React, { useState } from "react";
+import { api } from "../api/client";
+import ErrorMessage from "./ErrorMessage";
+
+const INITIAL_FORM = {
+  name: "",
+  email: ""
+};
 
 export default function TargetForm({ group, onCreated }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   if (!group) {
-    return <div>Select a target group to add people.</div>;
+    return (
+      <div className="target-form target-form--empty">
+        <p>Select a target group to add individuals.</p>
+      </div>
+    );
+  }
+
+  function updateField(name, value) {
+    setForm(prev => ({ ...prev, [name]: value }));
+  }
+
+  function isValid() {
+    return form.name.trim() && form.email.trim();
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-
-    if (!name || !email) {
-      setError('Name and email are required.');
+    if (!isValid()) {
+      setError("Full name and email address are required.");
       return;
     }
 
-    setError('');
+    setError("");
     setSaving(true);
 
     try {
       const dto = {
-        name,
-        email,
-        groupId: group.id,
+        name: form.name.trim(),
+        email: form.email.trim(),
+        groupId: group.id
       };
 
-      await api.post('/api/targets', dto);
+      await api.post("/api/targets", dto);
 
-      setName('');
-      setEmail('');
-
-      if (onCreated) onCreated();
+      setForm(INITIAL_FORM);
+      onCreated?.();
     } catch (err) {
-      setError(err.message || 'Failed to add target.');
+      setError(err?.message || "Failed to add target.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form className="target-form" onSubmit={handleSubmit}>
-      <h3>Add target to “{group.name}”</h3>
+    <form className="target-form" onSubmit={handleSubmit} noValidate>
+      <header className="form-header">
+        <h3>Add target</h3>
+        <p className="form-context">
+          Group: <strong>{group.name}</strong>
+        </p>
+      </header>
 
       <ErrorMessage message={error} />
 
-      <label>
-        Full name
+      <div className="form-group">
+        <label htmlFor="target-name">
+          Full name <span aria-hidden>*</span>
+        </label>
         <input
+          id="target-name"
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={e => updateField("name", e.target.value)}
+          placeholder="Jane Doe"
           required
         />
-      </label>
+      </div>
 
-      <label>
-        Email address
+      <div className="form-group">
+        <label htmlFor="target-email">
+          Email address <span aria-hidden>*</span>
+        </label>
         <input
+          id="target-email"
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={form.email}
+          onChange={e => updateField("email", e.target.value)}
+          placeholder="jane.doe@company.com"
           required
         />
-      </label>
+      </div>
 
-      <button type="submit" disabled={saving}>
-        {saving ? 'Adding…' : 'Add target'}
-      </button>
+      <div className="form-actions">
+        <button
+          type="submit"
+          className="btn btn--primary"
+          disabled={saving || !isValid()}
+        >
+          {saving ? "Adding target…" : "Add target"}
+        </button>
+      </div>
     </form>
   );
 }

@@ -1,24 +1,29 @@
-// src/components/CampaignList.jsx
-import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import Loader from './Loader';
-import ErrorMessage from './ErrorMessage';
+import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
+import Loader from "./Loader";
+import ErrorMessage from "./ErrorMessage";
 
 export default function CampaignList({ onSelectCampaign, onChanged }) {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [schedulingId, setSchedulingId] = useState(null);
-  const [scheduleValue, setScheduleValue] = useState('');
+  const [error, setError] = useState("");
+
+  const [activeScheduleId, setActiveScheduleId] = useState(null);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [actionError, setActionError] = useState("");
+
+  /* =========================
+     Load
+     ========================= */
 
   async function load() {
     try {
       setLoading(true);
-      setError('');
-      const data = await api.get('/api/campaigns');
+      setError("");
+      const data = await api.get("/api/campaigns");
       setCampaigns(data);
     } catch (err) {
-      setError(err.message || 'Failed to load campaigns.');
+      setError(err?.message || "Failed to load campaigns.");
     } finally {
       setLoading(false);
     }
@@ -28,121 +33,167 @@ export default function CampaignList({ onSelectCampaign, onChanged }) {
     load();
   }, []);
 
-  async function launch(id) {
+  /* =========================
+     Actions
+     ========================= */
+
+  async function handleLaunch(id) {
+    setActionError("");
+
     try {
       await api.post(`/api/campaigns/${id}/launch`, {});
-      if (onChanged) onChanged();
+      onChanged?.();
       await load();
     } catch (err) {
-      alert(err.message || 'Failed to launch campaign.');
+      setActionError(err?.message || "Failed to launch campaign.");
     }
   }
 
-  async function schedule(id) {
-    if (!scheduleValue) {
-      alert('Please pick a schedule date/time first.');
+  async function handleSchedule(id) {
+    if (!scheduleAt) {
+      setActionError("Please select a date and time to schedule.");
       return;
     }
+
+    setActionError("");
+
     try {
-      const iso = new Date(scheduleValue).toISOString();
+      const iso = new Date(scheduleAt).toISOString();
       await api.post(`/api/campaigns/${id}/schedule`, iso);
-      setSchedulingId(null);
-      setScheduleValue('');
-      if (onChanged) onChanged();
+
+      setActiveScheduleId(null);
+      setScheduleAt("");
+      onChanged?.();
       await load();
     } catch (err) {
-      alert(err.message || 'Failed to schedule campaign.');
+      setActionError(err?.message || "Failed to schedule campaign.");
     }
   }
 
-  if (loading) return <Loader label="Loading campaigns…" />;
+  if (loading) {
+    return <Loader label="Loading campaigns…" />;
+  }
+
+  /* =========================
+     Render
+     ========================= */
 
   return (
-    <div className="campaign-list">
-      <h2>Campaigns</h2>
+    <section className="campaign-list">
+      <header className="list-header">
+        <h2>Campaigns</h2>
+      </header>
 
-      <ErrorMessage message={error} />
+      <ErrorMessage message={error || actionError} />
 
       {campaigns.length === 0 ? (
-        <p>No campaigns yet.</p>
+        <p className="empty-state">No campaigns have been created yet.</p>
       ) : (
-        <table>
+        <table className="table table--campaigns">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Scheduled</th>
-              <th>Launched</th>
-              <th>Throttle</th>
-              <th>Actions</th>
+              <th scope="col">Name</th>
+              <th scope="col">Status</th>
+              <th scope="col">Scheduled</th>
+              <th scope="col">Launched</th>
+              <th scope="col">Throttle</th>
+              <th scope="col" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
-            {campaigns.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => onSelectCampaign && onSelectCampaign(c)}
-                  >
-                    {c.name}
-                  </button>
-                </td>
-                <td>{c.status}</td>
-                <td>
-                  {c.scheduledAtUtc
-                    ? new Date(c.scheduledAtUtc).toLocaleString()
-                    : '—'}
-                </td>
-                <td>
-                  {c.launchedAtUtc
-                    ? new Date(c.launchedAtUtc).toLocaleString()
-                    : '—'}
-                </td>
-                <td>{c.throttlePerMinute}</td>
-                <td>
-                  <button type="button" onClick={() => launch(c.id)}>
-                    Launch
-                  </button>
+            {campaigns.map(c => {
+              const isScheduling = activeScheduleId === c.id;
 
-                  {schedulingId === c.id ? (
-                    <>
-                      <input
-                        type="datetime-local"
-                        value={scheduleValue}
-                        onChange={(e) => setScheduleValue(e.target.value)}
-                      />
-                      <button type="button" onClick={() => schedule(c.id)}>
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSchedulingId(null);
-                          setScheduleValue('');
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
+              return (
+                <tr key={c.id}>
+                  <td>
                     <button
                       type="button"
-                      onClick={() => {
-                        setSchedulingId(c.id);
-                        setScheduleValue('');
-                      }}
+                      className="link-button"
+                      onClick={() => onSelectCampaign?.(c)}
                     >
-                      Schedule
+                      {c.name}
                     </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </td>
+
+                  <td>
+                    <span className={`status status--${c.status}`}>
+                      {c.status}
+                    </span>
+                  </td>
+
+                  <td>
+                    {c.scheduledAtUtc
+                      ? new Date(c.scheduledAtUtc).toLocaleString()
+                      : "—"}
+                  </td>
+
+                  <td>
+                    {c.launchedAtUtc
+                      ? new Date(c.launchedAtUtc).toLocaleString()
+                      : "—"}
+                  </td>
+
+                  <td>{c.throttlePerMinute}</td>
+
+                  <td className="table-actions">
+                    <button
+                      type="button"
+                      className="btn btn--small"
+                      onClick={() => handleLaunch(c.id)}
+                      disabled={c.status !== "draft"}
+                    >
+                      Launch
+                    </button>
+
+                    {isScheduling ? (
+                      <div className="schedule-inline">
+                        <input
+                          type="datetime-local"
+                          value={scheduleAt}
+                          onChange={e => setScheduleAt(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn--small btn--primary"
+                          onClick={() => handleSchedule(c.id)}
+                          disabled={!scheduleAt}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--small"
+                          onClick={() => {
+                            setActiveScheduleId(null);
+                            setScheduleAt("");
+                            setActionError("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn--small btn--secondary"
+                        onClick={() => {
+                          setActiveScheduleId(c.id);
+                          setScheduleAt("");
+                          setActionError("");
+                        }}
+                        disabled={c.status !== "draft"}
+                      >
+                        Schedule
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }
