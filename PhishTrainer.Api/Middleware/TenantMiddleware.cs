@@ -1,66 +1,93 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using PhishTrainer.Api.Data;
+using PhishTrainer.Api.Models;
 using PhishTrainer.Api.Services;
 
 namespace PhishTrainer.Api.Middleware;
 
+/// <summary>
+/// Resolves the current tenant for each HTTP request.
+/// Supports:
+/// - X-Tenant header (for API clients)
+/// - Subdomain-based tenant (e.g. acme.app.com -> "acme")
+/// - Fallback to "default" tenant.
+/// Caches tenant lookups in-memory for a short period.
+/// </summary>
 public class TenantMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly ILogger<TenantMiddleware> _logger;
 
-    public TenantMiddleware(RequestDelegate next) => _next = next;
-
-    public async Task InvokeAsync(HttpContext context, PhishDbContext db, ITenantResolver tenantResolver)
+    public TenantMiddleware(RequestDelegate next, ILogger<TenantMiddleware> logger)
     {
-        // Option 1: subdomain (acme.yourapp.com)
-        var host = context.Request.Host.Host;
-        var parts = host.Split('.');
-        var slug = parts.Length > 2 ? parts[0] : "default";
+        _next = next;
+        _logger = logger;
+    }
 
-        // Option 2: from JWT claim (if already authenticated)
-        // var slug = context.User.FindFirst("tenant_slug")?.Value ?? "default";
+    public async Task InvokeAsync(
+        HttpContext context,
+        PhishDbContext db,
+        ITenantResolver tenantResolver,
+        IMemoryCache cache)
+    {
+        // 1) Identify tenant slug
+        var slug = ResolveTenantSlug(context);
 
-        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Slug == slug && t.IsActive);
-        if (tenant == null)
+        // 2) Fetch tenant (with small in-memory cache)
+        var cacheKey = $"tenant:{slug}";
+        if (!cache.TryGetValue(cacheKey, out Tenant? tenant))
         {
-            context.Response.StatusCode = 404;
-            await context.Response.WriteAsJsonAsync(new { error = "Tenant not found" });
-            return;
+            tenant = await db.Tenants
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Slug == slug && t.IsActive);
+
+            if (tenant == null)
+            {
+                _logger.LogWarning("Tenant not found for slug {Slug}", slug);
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant not found" });
+                return;
+            }
+
+            cache.Set(cacheKey, tenant, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            });
         }
 
-        ((TenantResolver)tenantResolver).SetTenant(tenant.Id, tenant.Slug);
+        // 3) Set tenant for the rest of the pipeline
+        tenantResolver.SetTenant(tenant.Id, tenant.Slug);
+        _logger.LogDebug("Tenant resolved: Id={TenantId}, Slug={Slug}", tenant.Id, tenant.Slug);
+
         await _next(context);
     }
-    // in TenantMiddleware.cs, inside InvokeAsync
 
-// 1) Prefer explicit header if present
-var slug = context.Request.Headers["X-Tenant"].FirstOrDefault();
-if (string.IsNullOrWhiteSpace(slug))
-{
-    var host = context.Request.Host.Host;
-    var parts = host.Split('.');
-    slug = parts.Length > 2 ? parts[0] : "default";
-}
-
-// 2) Simple in-memory cache (per instance)
-var cache = context.RequestServices.GetRequiredService<IMemoryCache>();
-var cacheKey = $"tenant:{slug}";
-
-if (!cache.TryGetValue(cacheKey, out Tenant? tenant))
-{
-    tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Slug == slug && t.IsActive);
-
-    if (tenant == null)
+    private static string ResolveTenantSlug(HttpContext context)
     {
-        _logger.LogWarning("Tenant not found for slug: {Slug}", slug);
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        await context.Response.WriteAsJsonAsync(new { error = "Tenant not found" });
-        return;
+        // Highest priority: explicit header (API clients / tests)
+        var fromHeader = context.Request.Headers["X-Tenant"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(fromHeader))
+        {
+            return fromHeader.Trim().ToLowerInvariant();
+        }
+
+        // Next: query string override ?tenant=acme (useful for debugging)
+        if (context.Request.Query.TryGetValue("tenant", out var tenantQuery) &&
+            !string.IsNullOrWhiteSpace(tenantQuery.FirstOrDefault()))
+        {
+            return tenantQuery.First()!.Trim().ToLowerInvariant();
+        }
+
+        // Finally: subdomain-based (acme.app.com -> "acme")
+        var host = context.Request.Host.Host;
+        var parts = host.Split('.');
+        if (parts.Length > 2)
+        {
+            return parts[0].Trim().ToLowerInvariant();
+        }
+
+        // Fallback tenant
+        return "default";
     }
-
-    cache.Set(cacheKey, tenant, TimeSpan.FromMinutes(5));
 }
-
-tenantResolver.SetTenant(tenant.Id, tenant.Slug);
-
-}
-
