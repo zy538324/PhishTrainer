@@ -44,3 +44,29 @@ public class PhishDbContext : DbContext
         modelBuilder.Entity<CampaignEvent>().HasIndex(e => new { e.CampaignId, e.EventType });
     }
 }
+public override int SaveChanges()
+{
+    EnforceTenantIds();
+    return base.SaveChanges();
+}
+
+public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+{
+    EnforceTenantIds();
+    return base.SaveChangesAsync(cancellationToken);
+}
+
+private void EnforceTenantIds()
+{
+    var tenantId = _tenantResolver.GetTenantId();
+
+    foreach (var entry in ChangeTracker.Entries())
+    {
+        if (entry.Entity is IMustHaveTenant tenantOwned &&
+            (entry.State == EntityState.Added || entry.State == EntityState.Modified))
+        {
+            tenantOwned.TenantId = tenantId;
+        }
+    }
+}
+
