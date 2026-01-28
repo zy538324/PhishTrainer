@@ -6,6 +6,7 @@ using Microsoft.Identity.Client;
 using PhishTrainer.Api.Data;
 using PhishTrainer.Api.Models;
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using System.Net.Http.Json;
 
 namespace PhishTrainer.Api.Services;
@@ -243,16 +244,26 @@ public class MailService : IMailService
 
         var senderName = tenant.SmtpDisplayName ?? tenant.Name;
 
-        return htmlBody
-            .Replace("{{TrackingPixel}}", $"<img src=\"{openUrl}\" width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />")
-            .Replace("{{ClickLink}}", clickUrl)
-            .Replace("{{trackOpenUrl}}", openUrl)
-            .Replace("{{trackClickUrl}}", clickUrl)
-            .Replace("{{link}}", clickUrl)
-            .Replace("{{name}}", name)
-            .Replace("{{email}}", target?.Email ?? toAddress)
-            .Replace("{{sender}}", senderName)
-            .Replace("{{senderEmail}}", tenant.SmtpFromAddress ?? string.Empty);
+        var result = htmlBody;
+
+        result = ReplaceToken(result, "TrackingPixel",
+            $"<img src=\"{openUrl}\" width=\"1\" height=\"1\" style=\"display:none;\" alt=\"\" />");
+        result = ReplaceToken(result, "ClickLink", clickUrl);
+        result = ReplaceToken(result, "trackOpenUrl", openUrl);
+        result = ReplaceToken(result, "trackClickUrl", clickUrl);
+        result = ReplaceToken(result, "link", clickUrl);
+        result = ReplaceToken(result, "name", name);
+        result = ReplaceToken(result, "email", target?.Email ?? toAddress);
+        result = ReplaceToken(result, "sender", senderName);
+        result = ReplaceToken(result, "senderEmail", tenant.SmtpFromAddress ?? string.Empty);
+
+        return result;
+    }
+
+    private static string ReplaceToken(string input, string token, string value)
+    {
+        var pattern = $@"\{{\{{\s*{Regex.Escape(token)}\s*\}}\}}";
+        return Regex.Replace(input, pattern, value ?? string.Empty, RegexOptions.IgnoreCase);
     }
 
     private MimeMessage BuildMimeMessage(
